@@ -3,6 +3,10 @@ import { decryptString } from "../utils/crypto";
 import { mergeTransactionTags } from "./tagService";
 import { getTagRulesForUser, matchRuleTags } from "./tagRulesService";
 import { toDollars } from "../utils/money";
+import { parseDateFlexible } from "../utils/dates";
+import { normalizeMerchant } from "../utils/merchant";
+import { autoCategorizeTransaction } from "./autoCategorizationService";
+import { scheduleAutoPlanCheck } from "./autoPlanService";
 import { AccountModel, PlaidItemModel, TransactionModel } from "../models";
 
 type AccountType = "CHECKING" | "SAVINGS" | "CREDIT" | "CASH";
@@ -110,7 +114,7 @@ export const syncTransactionsForItem = async (params: {
           $set: {
             userId: params.userId,
             accountId: account.id,
-            date: new Date(tx.date),
+            date: parseDateFlexible(tx.date),
             amountDollars,
             merchant,
             note: tx.name ?? null,
@@ -123,9 +127,15 @@ export const syncTransactionsForItem = async (params: {
       );
       const ruleTags = matchRuleTags(tagRules, {
         merchant,
-        note: tx.name ?? null
+        merchantNormalized: normalizeMerchant(merchant),
+        note: tx.name ?? null,
+        amountDollars: Math.abs(amountDollars)
       });
       await mergeTransactionTags(transaction.id, params.userId, ruleTags);
+      await autoCategorizeTransaction({
+        userId: params.userId,
+        transactionId: transaction.id
+      });
       addedCount += 1;
     }
 
@@ -140,7 +150,7 @@ export const syncTransactionsForItem = async (params: {
           $set: {
             userId: params.userId,
             accountId: account.id,
-            date: new Date(tx.date),
+            date: parseDateFlexible(tx.date),
             amountDollars,
             merchant,
             note: tx.name ?? null,
@@ -153,9 +163,15 @@ export const syncTransactionsForItem = async (params: {
       );
       const ruleTags = matchRuleTags(tagRules, {
         merchant,
-        note: tx.name ?? null
+        merchantNormalized: normalizeMerchant(merchant),
+        note: tx.name ?? null,
+        amountDollars: Math.abs(amountDollars)
       });
       await mergeTransactionTags(transaction.id, params.userId, ruleTags);
+      await autoCategorizeTransaction({
+        userId: params.userId,
+        transactionId: transaction.id
+      });
       modifiedCount += 1;
     }
 
@@ -175,6 +191,8 @@ export const syncTransactionsForItem = async (params: {
     { _id: params.item.id },
     { transactionsCursor: cursor }
   );
+
+  scheduleAutoPlanCheck(params.userId, "transaction");
 
   return {
     itemId: params.item.itemId,

@@ -11,13 +11,10 @@ import {
 import { ensureTags, normalizeTags } from "../services/tagService";
 import { buildBudgetSuggestions } from "../services/budgetSuggestionService";
 import { decimalToNumber } from "../utils/decimal";
-import { parseDate } from "../utils/dates";
-import { parseWithSchema } from "../utils/validation";
+import { parseDate, toDateKey, toDateOnly } from "../utils/dates";
+import { dateString, parseWithSchema } from "../utils/validation";
 
-const dateInputSchema = z.union([
-  z.string().datetime(),
-  z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
-]);
+const dateInputSchema = dateString;
 
 const budgetShape = {
   name: z.string().min(1),
@@ -58,6 +55,11 @@ const budgetQuerySchema = z.object({
   date: dateInputSchema.optional()
 });
 
+const budgetAlertsQuerySchema = z.object({
+  date: dateInputSchema.optional(),
+  thresholds: z.string().optional()
+});
+
 const suggestionsQuerySchema = z.object({
   basis: z.enum(["TAG", "CATEGORY"]).optional(),
   monthsBack: z.coerce.number().int().min(1).max(12).optional(),
@@ -65,12 +67,26 @@ const suggestionsQuerySchema = z.object({
 });
 
 const budgetStatusSchema = z.object({
-  periodStart: z.string().datetime(),
-  periodEnd: z.string().datetime(),
+  periodStart: dateString,
+  periodEnd: dateString,
   spentDollars: z.number(),
   remainingDollars: z.number(),
   isOverBudget: z.boolean(),
   overspendDollars: z.number()
+});
+
+const budgetAlertSchema = z.object({
+  budgetId: z.string(),
+  name: z.string(),
+  period: z.enum(["WEEKLY", "MONTHLY"]),
+  tagName: z.string().nullable().optional(),
+  categoryName: z.string().nullable().optional(),
+  threshold: z.number(),
+  thresholdAmountDollars: z.number(),
+  spentDollars: z.number(),
+  overspendDollars: z.number(),
+  periodStart: dateString,
+  periodEnd: dateString
 });
 
 const budgetResponseSchema = z.object({
@@ -98,8 +114,8 @@ const budgetSuggestionsResponseSchema = z.object({
   basis: z.enum(["TAG", "CATEGORY"]),
   summary: z.object({
     monthsBack: z.number(),
-    fromDate: z.string().datetime(),
-    toDate: z.string().datetime(),
+    fromDate: dateString,
+    toDate: dateString,
     incomeMonthly: z.number(),
     fixedObligationsMonthly: z.number(),
     discretionaryMonthly: z.number(),
@@ -141,6 +157,7 @@ export default async function budgetsRoutes(fastify: FastifyInstance) {
     return {
       ...data,
       amountDollars: decimalToNumber(data.amountDollars),
+      createdAt: toDateOnly(data.createdAt) ?? undefined,
       categoryId: category?.id ?? data.categoryId ?? null,
       tagId: tag?.id ?? data.tagId ?? null,
       categoryName: category?.name ?? null,
@@ -186,8 +203,8 @@ export default async function budgetsRoutes(fastify: FastifyInstance) {
       const txIds = tagLinks.map((link) => link.transactionId);
       if (txIds.length === 0) {
         return {
-          periodStart: start.toISOString(),
-          periodEnd: end.toISOString(),
+          periodStart: toDateKey(start),
+          periodEnd: toDateKey(end),
           spentDollars: 0,
           remainingDollars: decimalToNumber(budget.amountDollars),
           isOverBudget: false,
@@ -209,8 +226,8 @@ export default async function budgetsRoutes(fastify: FastifyInstance) {
     const overspendDollars = remainingDollars < 0 ? Math.abs(remainingDollars) : 0;
 
     return {
-      periodStart: start.toISOString(),
-      periodEnd: end.toISOString(),
+      periodStart: toDateKey(start),
+      periodEnd: toDateKey(end),
       spentDollars,
       remainingDollars,
       isOverBudget: overspendDollars > 0,
@@ -251,6 +268,76 @@ export default async function budgetsRoutes(fastify: FastifyInstance) {
       );
 
       return results;
+    }
+  );
+
+  // List budget overspend alerts for the current period.
+  fastify.get(
+    "/alerts",
+    {
+      schema: {
+        querystring: zodToJsonSchema(budgetAlertsQuerySchema),
+        response: { 200: zodToJsonSchema(z.array(budgetAlertSchema)) }
+      }
+    },
+    async (request, reply) => {
+      const parsed = parseWithSchema(budgetAlertsQuerySchema, request.query);
+      if (!parsed.ok) {
+        return reply.code(400).send({ error: "Invalid query", details: parsed.error });
+      }
+
+      const thresholds = (parsed.data.thresholds ?? "1,2,3")
+        .split(",")
+        .map((value) => Number(value.trim()))
+        .filter((value) => Number.isFinite(value) && value >= 1 && value <= 10);
+      const uniqueThresholds = Array.from(new Set(thresholds)).sort((a, b) => a - b);
+      const effectiveThresholds = uniqueThresholds.length > 0 ? uniqueThresholds : [1, 2, 3];
+
+      const referenceDate = parsed.data.date
+        ? parseDate(parsed.data.date)
+        : new Date();
+      const userId = request.user.sub;
+
+      const budgets = await BudgetModel.find({ userId })
+        .sort({ createdAt: -1 })
+        .populate("tagId")
+        .populate("categoryId");
+
+      const alerts: z.infer<typeof budgetAlertSchema>[] = [];
+
+      for (const budget of budgets) {
+        const status = await buildBudgetStatus(budget, referenceDate);
+        const spent = status.spentDollars;
+        const base = decimalToNumber(budget.amountDollars);
+        if (base <= 0) continue;
+
+        for (const threshold of effectiveThresholds) {
+          const thresholdAmount = toDollars(base * threshold);
+          if (spent < thresholdAmount) continue;
+
+          alerts.push({
+            budgetId: budget.id,
+            name: budget.name,
+            period: budget.period,
+            tagName:
+              budget.tagId && typeof budget.tagId === "object"
+                ? (budget.tagId as any).name
+                : undefined,
+            categoryName:
+              budget.categoryId && typeof budget.categoryId === "object"
+                ? (budget.categoryId as any).name
+                : undefined,
+            threshold,
+            thresholdAmountDollars: thresholdAmount,
+            spentDollars: spent,
+            overspendDollars: toDollars(spent - thresholdAmount),
+            periodStart: status.periodStart,
+            periodEnd: status.periodEnd
+          });
+        }
+      }
+
+      return alerts;
     }
   );
 

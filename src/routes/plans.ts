@@ -2,6 +2,7 @@ import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { parseWithSchema } from "../utils/validation";
+import { toDateKey, toDateOnly } from "../utils/dates";
 import { createPlan, getPlan, listPlans, previewPlan } from "../services/planService";
 
 const rulesSchema = z.object({
@@ -78,9 +79,9 @@ export default async function plansRoutes(fastify: FastifyInstance) {
       name: plan.name,
       strategy: plan.strategy,
       horizonMonths: plan.horizonMonths,
-      startDate: plan.startDate.toISOString().slice(0, 10),
+      startDate: toDateKey(plan.startDate),
       summary: plan.summaryJson,
-      createdAt: plan.createdAt
+      createdAt: toDateOnly(plan.createdAt)
     }));
   });
 
@@ -99,7 +100,7 @@ export default async function plansRoutes(fastify: FastifyInstance) {
       name: plan.plan.name,
       strategy: plan.plan.strategy,
       horizonMonths: plan.plan.horizonMonths,
-      startDate: plan.plan.startDate.toISOString().slice(0, 10),
+      startDate: toDateKey(plan.plan.startDate),
       summary: plan.summary,
       warnings: plan.warnings,
       schedule: plan.schedule,

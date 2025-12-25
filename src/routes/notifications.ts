@@ -2,7 +2,8 @@ import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { NotificationModel } from "../models";
-import { parseWithSchema } from "../utils/validation";
+import { dateString, parseWithSchema } from "../utils/validation";
+import { toDateOnly } from "../utils/dates";
 
 const notificationQuerySchema = z.object({
   unreadOnly: z.coerce.boolean().optional()
@@ -15,8 +16,8 @@ const notificationResponseSchema = z.object({
   entityId: z.string().nullable().optional(),
   milestonePct: z.number().nullable().optional(),
   message: z.string(),
-  createdAt: z.string().datetime(),
-  readAt: z.string().datetime().nullable().optional()
+  createdAt: dateString,
+  readAt: dateString.nullable().optional()
 });
 
 export default async function notificationsRoutes(fastify: FastifyInstance) {
@@ -50,8 +51,8 @@ export default async function notificationsRoutes(fastify: FastifyInstance) {
         entityId: note.entityId ?? null,
         milestonePct: note.milestonePct ?? null,
         message: note.message,
-        createdAt: note.createdAt.toISOString(),
-        readAt: note.readAt ? note.readAt.toISOString() : null
+        createdAt: toDateOnly(note.createdAt),
+        readAt: toDateOnly(note.readAt)
       }));
     }
   );
@@ -79,8 +80,8 @@ export default async function notificationsRoutes(fastify: FastifyInstance) {
       entityId: updated.entityId ?? null,
       milestonePct: updated.milestonePct ?? null,
       message: updated.message,
-      createdAt: updated.createdAt.toISOString(),
-      readAt: updated.readAt ? updated.readAt.toISOString() : null
+      createdAt: toDateOnly(updated.createdAt),
+      readAt: toDateOnly(updated.readAt)
     };
   });
 }

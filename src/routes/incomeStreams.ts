@@ -4,13 +4,14 @@ import { zodToJsonSchema } from "zod-to-json-schema";
 import { IncomeStreamModel } from "../models";
 import { replaceIncomeStreamTags, normalizeTags } from "../services/tagService";
 import { decimalToNumber } from "../utils/decimal";
-import { parseWithSchema } from "../utils/validation";
+import { parseDateFlexible, toDateOnly } from "../utils/dates";
+import { dateString, parseWithSchema } from "../utils/validation";
 
 const incomeStreamBaseSchema = z.object({
   name: z.string().min(1),
   amountDollars: z.number().positive(),
   cadence: z.enum(["WEEKLY", "BIWEEKLY", "MONTHLY"]),
-  nextPayDate: z.string().datetime()
+  nextPayDate: dateString
 });
 
 const incomeStreamCreateSchema = incomeStreamBaseSchema.extend({
@@ -63,6 +64,8 @@ export default async function incomeStreamsRoutes(fastify: FastifyInstance) {
       amountDollars,
       lastAmountDollars,
       amountChangeStatus: computeChangeStatus(amountDollars, lastAmountDollars),
+      createdAt: toDateOnly(data.createdAt) ?? undefined,
+      nextPayDate: toDateOnly(data.nextPayDate),
       tags: incomeStreamTags
         ? incomeStreamTags.map((entry: any) => entry.tagId?.name).filter(Boolean)
         : []
@@ -105,7 +108,7 @@ export default async function incomeStreamsRoutes(fastify: FastifyInstance) {
         name: parsed.data.name,
         amountDollars: parsed.data.amountDollars,
         cadence: parsed.data.cadence,
-        nextPayDate: new Date(parsed.data.nextPayDate),
+        nextPayDate: parseDateFlexible(parsed.data.nextPayDate),
         userId
       });
 
@@ -155,7 +158,7 @@ export default async function incomeStreamsRoutes(fastify: FastifyInstance) {
         updateData.cadence = parsed.data.cadence;
       }
       if (parsed.data.nextPayDate !== undefined) {
-        updateData.nextPayDate = new Date(parsed.data.nextPayDate);
+        updateData.nextPayDate = parseDateFlexible(parsed.data.nextPayDate);
       }
       if (parsed.data.amountDollars !== undefined) {
         const currentAmount = decimalToNumber(existing.amountDollars);

@@ -9,12 +9,9 @@ import {
 } from "../services/savingsService";
 import { parseDate, toDateKey } from "../utils/dates";
 import { toDollars } from "../utils/money";
-import { parseWithSchema } from "../utils/validation";
+import { dateString, parseWithSchema } from "../utils/validation";
 
-const dateInputSchema = z.union([
-  z.string().datetime(),
-  z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
-]);
+const dateInputSchema = dateString;
 
 const mandatorySavingsSchema = z.object({
   monthsToSave: z.number().int().min(1).max(36),

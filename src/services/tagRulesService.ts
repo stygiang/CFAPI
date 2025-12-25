@@ -10,6 +10,8 @@ export type TagRuleWithTags = {
   pattern: string;
   matchType: TagRuleMatchType;
   sourceField: TagRuleSourceField;
+  minAmountDollars?: number | null;
+  maxAmountDollars?: number | null;
   tags: string[];
 };
 
@@ -29,6 +31,8 @@ export const getTagRulesForUser = async (
     pattern: rule.pattern,
     matchType: rule.matchType,
     sourceField: rule.sourceField,
+    minAmountDollars: rule.minAmountDollars ?? null,
+    maxAmountDollars: rule.maxAmountDollars ?? null,
     tags: tagEntries.map((entry: any) => entry.tagId?.name).filter(Boolean)
   };
   });
@@ -37,28 +41,46 @@ export const getTagRulesForUser = async (
 // Match a set of rules against a transaction's merchant/note fields.
 export const matchRuleTags = (
   rules: TagRuleWithTags[],
-  transaction: { merchant?: string | null; note?: string | null }
+  transaction: {
+    merchant?: string | null;
+    merchantNormalized?: string | null;
+    note?: string | null;
+    amountDollars?: number | null;
+  }
 ): string[] => {
   const tagNames: string[] = [];
 
   for (const rule of rules) {
-    const source =
-      rule.sourceField === "MERCHANT" ? transaction.merchant : transaction.note;
-    if (!source) continue;
+    const sources =
+      rule.sourceField === "MERCHANT"
+        ? [transaction.merchant, transaction.merchantNormalized]
+        : [transaction.note];
+    const candidates = sources.filter(Boolean) as string[];
+    if (candidates.length === 0) continue;
 
-    const haystack = source.toLowerCase();
     const needle = rule.pattern.toLowerCase();
 
     let matches = false;
-    if (rule.matchType === "CONTAINS") {
-      matches = haystack.includes(needle);
-    } else {
-      try {
-        const regex = new RegExp(rule.pattern, "i");
-        matches = regex.test(source);
-      } catch {
-        matches = false;
+    if (rule.minAmountDollars != null || rule.maxAmountDollars != null) {
+      const amount = transaction.amountDollars ?? null;
+      if (amount == null) continue;
+      if (rule.minAmountDollars != null && amount < rule.minAmountDollars) continue;
+      if (rule.maxAmountDollars != null && amount > rule.maxAmountDollars) continue;
+    }
+
+    for (const source of candidates) {
+      const haystack = source.toLowerCase();
+      if (rule.matchType === "CONTAINS") {
+        matches = haystack.includes(needle);
+      } else {
+        try {
+          const regex = new RegExp(rule.pattern, "i");
+          matches = regex.test(source);
+        } catch {
+          matches = false;
+        }
       }
+      if (matches) break;
     }
 
     if (matches) {
@@ -76,6 +98,8 @@ export const upsertTagRule = async (params: {
   pattern: string;
   matchType: TagRuleMatchType;
   sourceField: TagRuleSourceField;
+  minAmountDollars?: number | null;
+  maxAmountDollars?: number | null;
   tags: string[];
 }) => {
   const existing = await TagRuleModel.findOne({
@@ -88,6 +112,12 @@ export const upsertTagRule = async (params: {
   const tagNames = normalizeTags(params.tags);
   if (existing) {
     existing.name = params.name;
+    if (params.minAmountDollars !== undefined) {
+      existing.minAmountDollars = params.minAmountDollars;
+    }
+    if (params.maxAmountDollars !== undefined) {
+      existing.maxAmountDollars = params.maxAmountDollars;
+    }
     await existing.save();
     await replaceTagRuleTags(existing.id, params.userId, tagNames);
     return existing;
@@ -98,7 +128,9 @@ export const upsertTagRule = async (params: {
     name: params.name,
     pattern: params.pattern,
     matchType: params.matchType,
-    sourceField: params.sourceField
+    sourceField: params.sourceField,
+    ...(params.minAmountDollars != null ? { minAmountDollars: params.minAmountDollars } : {}),
+    ...(params.maxAmountDollars != null ? { maxAmountDollars: params.maxAmountDollars } : {})
   });
   await replaceTagRuleTags(created.id, params.userId, tagNames);
   return created;

@@ -11,7 +11,7 @@ import { calculateMandatorySavingsTarget, notifySavingsMilestones } from "../ser
 import { decimalToNumber } from "../utils/decimal";
 import { parseDate, toDateKey } from "../utils/dates";
 import { toDollars } from "../utils/money";
-import { parseWithSchema } from "../utils/validation";
+import { dateString, parseWithSchema } from "../utils/validation";
 
 const savingsGoalSchema = z.object({
   name: z.string().min(1),
@@ -27,7 +27,7 @@ const contributionSchema = z.object({
 });
 
 const autoAllocateSchema = z.object({
-  date: z.string().datetime()
+  date: dateString
 });
 
 export default async function savingsGoalsRoutes(fastify: FastifyInstance) {

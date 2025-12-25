@@ -4,10 +4,10 @@ import { zodToJsonSchema } from "zod-to-json-schema";
 import { BillModel, IncomeStreamModel, SubscriptionModel } from "../models";
 import { buildBillEvents, buildIncomeEvents, buildSubscriptionEvents } from "../services/eventBuilder";
 import { buildCashflowForecast } from "../services/cashflowService";
-import { parseWithSchema } from "../utils/validation";
+import { dateString, parseWithSchema } from "../utils/validation";
 
 const forecastRequestSchema = z.object({
-  startDate: z.string().datetime(),
+  startDate: dateString,
   horizonMonths: z.number().int().min(1).max(60),
   startingBalanceDollars: z.number().optional(),
   minBufferDollars: z.number().optional()

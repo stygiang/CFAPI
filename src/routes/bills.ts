@@ -3,13 +3,14 @@ import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { BillModel } from "../models";
 import { decimalToNumber } from "../utils/decimal";
-import { parseWithSchema } from "../utils/validation";
+import { parseDateFlexible, toDateOnly } from "../utils/dates";
+import { dateString, parseWithSchema } from "../utils/validation";
 
 const billBaseSchema = z.object({
     name: z.string().min(1),
     amountDollars: z.number().nonnegative(),
     dueDayOfMonth: z.number().int().min(1).max(28).optional(),
-    dueDate: z.string().datetime().optional(),
+    dueDate: dateString.optional(),
     frequency: z.enum(["MONTHLY", "WEEKLY", "BIWEEKLY", "YEARLY", "ONE_OFF"]),
     isEssential: z.boolean().default(true),
     autopay: z.boolean().default(false)
@@ -33,7 +34,9 @@ export default async function billsRoutes(fastify: FastifyInstance) {
     const data = bill?.toJSON ? bill.toJSON() : bill;
     return {
       ...data,
-      amountDollars: decimalToNumber(data.amountDollars)
+      amountDollars: decimalToNumber(data.amountDollars),
+      createdAt: toDateOnly(data.createdAt) ?? undefined,
+      dueDate: toDateOnly(data.dueDate)
     };
   };
 
@@ -67,7 +70,7 @@ export default async function billsRoutes(fastify: FastifyInstance) {
       const userId = request.user.sub;
       const bill = await BillModel.create({
         ...parsed.data,
-        dueDate: parsed.data.dueDate ? new Date(parsed.data.dueDate) : null,
+        dueDate: parsed.data.dueDate ? parseDateFlexible(parsed.data.dueDate) : null,
         userId
       });
       return mapBill(bill);

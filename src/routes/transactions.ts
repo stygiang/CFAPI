@@ -1,15 +1,20 @@
 import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
-import { TagModel, TransactionModel, TransactionTagModel } from "../models";
+import { CategoryModel, TagModel, TransactionModel, TransactionTagModel } from "../models";
 import { decimalToNumber } from "../utils/decimal";
-import { parseWithSchema } from "../utils/validation";
+import { dateString, parseWithSchema } from "../utils/validation";
+import { parseDateFlexible, toDateOnly } from "../utils/dates";
 import { normalizeTags, replaceTransactionTags } from "../services/tagService";
 import { getTagRulesForUser, matchRuleTags, upsertTagRule } from "../services/tagRulesService";
+import { normalizeMerchant } from "../utils/merchant";
+import { autoCategorizeTransaction } from "../services/autoCategorizationService";
+import { upsertCategoryRule } from "../services/categoryRulesService";
+import { scheduleAutoPlanCheck } from "../services/autoPlanService";
 
 const transactionSchema = z.object({
   accountId: z.string().optional(),
-  date: z.string().datetime(),
+  date: dateString,
   amountDollars: z.number(),
   categoryId: z.string().optional(),
   merchant: z.string().optional(),
@@ -18,14 +23,27 @@ const transactionSchema = z.object({
 });
 
 const transactionQuerySchema = z.object({
-  startDate: z.string().datetime().optional(),
-  endDate: z.string().datetime().optional(),
+  startDate: dateString.optional(),
+  endDate: dateString.optional(),
   tag: z.string().min(1).optional(),
   includeDeleted: z.coerce.boolean().optional()
 });
 
 const transactionTagsSchema = z.object({
   tags: z.array(z.string().min(1)),
+  learnRule: z
+    .object({
+      enabled: z.boolean().default(false),
+      sourceField: z.enum(["MERCHANT", "NOTE"]).optional(),
+      matchType: z.enum(["CONTAINS", "REGEX"]).optional(),
+      pattern: z.string().min(1).optional(),
+      name: z.string().min(1).optional()
+    })
+    .optional()
+});
+
+const transactionCategorySchema = z.object({
+  categoryId: z.string().min(1),
   learnRule: z
     .object({
       enabled: z.boolean().default(false),
@@ -46,7 +64,8 @@ export default async function transactionsRoutes(fastify: FastifyInstance) {
     return {
       ...data,
       amountDollars: decimalToNumber(data.amountDollars),
-      deletedAt: data.deletedAt ? new Date(data.deletedAt).toISOString() : null,
+      date: toDateOnly(data.date),
+      deletedAt: toDateOnly(data.deletedAt),
       tags
     };
   };
@@ -86,8 +105,10 @@ export default async function transactionsRoutes(fastify: FastifyInstance) {
 
       if (parsed.data.startDate || parsed.data.endDate) {
         where.date = {
-          ...(parsed.data.startDate ? { $gte: new Date(parsed.data.startDate) } : {}),
-          ...(parsed.data.endDate ? { $lte: new Date(parsed.data.endDate) } : {})
+          ...(parsed.data.startDate
+            ? { $gte: parseDateFlexible(parsed.data.startDate) }
+            : {}),
+          ...(parsed.data.endDate ? { $lte: parseDateFlexible(parsed.data.endDate) } : {})
         };
       }
 
@@ -134,7 +155,7 @@ export default async function transactionsRoutes(fastify: FastifyInstance) {
 
       const transaction = await TransactionModel.create({
         accountId: parsed.data.accountId,
-        date: new Date(parsed.data.date),
+        date: parseDateFlexible(parsed.data.date),
         amountDollars: parsed.data.amountDollars,
         categoryId: parsed.data.categoryId,
         merchant: parsed.data.merchant,
@@ -144,13 +165,22 @@ export default async function transactionsRoutes(fastify: FastifyInstance) {
 
       const autoTags = matchRuleTags(rules, {
         merchant: transaction.merchant,
-        note: transaction.note
+        merchantNormalized: normalizeMerchant(transaction.merchant),
+        note: transaction.note,
+        amountDollars: Math.abs(decimalToNumber(transaction.amountDollars))
       });
       const mergedTags = normalizeTags([...tagNames, ...autoTags]);
 
       if (mergedTags.length > 0) {
         await replaceTransactionTags(transaction.id, userId, mergedTags);
       }
+
+      await autoCategorizeTransaction({
+        userId,
+        transactionId: transaction.id
+      });
+
+      scheduleAutoPlanCheck(userId, "transaction");
 
       const tagsMap = await buildTagsMap([transaction.id]);
       return mapTransaction(transaction, tagsMap.get(transaction.id) ?? []);
@@ -191,7 +221,9 @@ export default async function transactionsRoutes(fastify: FastifyInstance) {
         const matchType = parsed.data.learnRule?.matchType ?? "CONTAINS";
         const pattern =
           parsed.data.learnRule?.pattern ??
-          (sourceField === "MERCHANT" ? transaction.merchant : transaction.note);
+          (sourceField === "MERCHANT"
+            ? normalizeMerchant(transaction.merchant) ?? transaction.merchant
+            : transaction.note);
 
         if (!pattern) {
           return reply.code(400).send({ error: "Missing source text for learnRule" });
@@ -224,6 +256,67 @@ export default async function transactionsRoutes(fastify: FastifyInstance) {
           matchType: learnConfig.matchType,
           sourceField: learnConfig.sourceField,
           tags: tagNames
+        });
+      }
+
+      const updated = await TransactionModel.findById(id);
+      const tagsMap = await buildTagsMap([id]);
+      return mapTransaction(updated, tagsMap.get(id) ?? []);
+    }
+  );
+
+  // Update the category for a transaction (optional learn rule).
+  fastify.patch(
+    "/:id/category",
+    { schema: { body: zodToJsonSchema(transactionCategorySchema) } },
+    async (request, reply) => {
+      const parsed = parseWithSchema(transactionCategorySchema, request.body);
+      if (!parsed.ok) {
+        return reply.code(400).send({ error: "Invalid body", details: parsed.error });
+      }
+
+      const userId = request.user.sub;
+      const id = (request.params as { id: string }).id;
+
+      const transaction = await TransactionModel.findOne({ _id: id, userId });
+      if (!transaction) {
+        return reply.code(404).send({ error: "Not found" });
+      }
+
+      const category = await CategoryModel.findOne({
+        _id: parsed.data.categoryId,
+        userId
+      });
+      if (!category) {
+        return reply.code(404).send({ error: "Category not found" });
+      }
+
+      await TransactionModel.updateOne(
+        { _id: id },
+        { categoryId: parsed.data.categoryId }
+      );
+
+      if (parsed.data.learnRule?.enabled) {
+        const sourceField =
+          parsed.data.learnRule.sourceField ?? (transaction.merchant ? "MERCHANT" : "NOTE");
+        const matchType = parsed.data.learnRule.matchType ?? "CONTAINS";
+        const pattern =
+          parsed.data.learnRule.pattern ??
+          (sourceField === "MERCHANT"
+            ? normalizeMerchant(transaction.merchant) ?? transaction.merchant
+            : transaction.note);
+
+        if (!pattern) {
+          return reply.code(400).send({ error: "Missing source text for learnRule" });
+        }
+
+        await upsertCategoryRule({
+          userId,
+          name: parsed.data.learnRule.name ?? `Learned category: ${pattern}`,
+          pattern,
+          matchType,
+          sourceField,
+          categoryId: parsed.data.categoryId
         });
       }
 

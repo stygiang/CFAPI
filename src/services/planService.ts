@@ -12,6 +12,7 @@ import { buildBillEvents, buildIncomeEvents, buildSubscriptionEvents } from "./e
 import { runPayoffEngine } from "../engine/payoffEngine";
 import { EngineOutput, PlanRules, Strategy } from "../engine/types";
 import { decimalToNumber } from "../utils/decimal";
+import { parseDate } from "../utils/dates";
 import { calculateMandatorySavingsTarget } from "./savingsService";
 
 export type PlanRequest = {
@@ -98,7 +99,7 @@ export const createPlan = async (userId: string, request: PlanRequest) => {
     name: request.name,
     strategy: request.strategy,
     horizonMonths: request.horizonMonths,
-    startDate: new Date(request.startDate),
+    startDate: parseDate(request.startDate),
     rulesJson: request.rules,
     summaryJson: output.summary,
     warningsJson: output.warnings
@@ -108,7 +109,7 @@ export const createPlan = async (userId: string, request: PlanRequest) => {
     await PlanItemModel.insertMany(
       output.schedule.map((item) => ({
         planId: plan.id,
-        date: new Date(item.date),
+        date: parseDate(item.date),
         type: item.type,
         entityId: item.entityId ?? null,
         amountDollars: item.amountDollars,

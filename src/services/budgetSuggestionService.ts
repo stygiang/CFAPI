@@ -10,6 +10,7 @@ import {
   TransactionTagModel
 } from "../models";
 import { decimalToNumber } from "../utils/decimal";
+import { toDateKey } from "../utils/dates";
 import { toDollars } from "../utils/money";
 import { calculateMandatorySavingsTarget } from "./savingsService";
 
@@ -160,7 +161,7 @@ export const buildBudgetSuggestions = async (params: {
         await calculateMandatorySavingsTarget({
           userId: params.userId,
           monthsToSave: mandatorySavings.monthsToSave,
-          startDate: now.toISOString().slice(0, 10)
+          startDate: toDateKey(now)
         })
       ).monthlyContributionDollars
     : 0;
@@ -259,8 +260,8 @@ export const buildBudgetSuggestions = async (params: {
     basis: params.basis,
     summary: {
       monthsBack: params.monthsBack,
-      fromDate: from.toISOString(),
-      toDate: now.toISOString(),
+      fromDate: toDateKey(from),
+      toDate: toDateKey(now),
       incomeMonthly: toDollars(incomeMonthly),
       fixedObligationsMonthly,
       discretionaryMonthly,

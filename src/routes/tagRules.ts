@@ -11,6 +11,8 @@ const ruleBaseSchema = z.object({
   pattern: z.string().min(1),
   matchType: z.enum(["CONTAINS", "REGEX"]),
   sourceField: z.enum(["MERCHANT", "NOTE"]),
+  minAmountDollars: z.number().nonnegative().optional(),
+  maxAmountDollars: z.number().nonnegative().optional(),
   tags: z.array(z.string().min(1))
 });
 
@@ -22,6 +24,8 @@ const ruleResponseSchema = z.object({
   pattern: z.string(),
   matchType: z.enum(["CONTAINS", "REGEX"]),
   sourceField: z.enum(["MERCHANT", "NOTE"]),
+  minAmountDollars: z.number().nullable().optional(),
+  maxAmountDollars: z.number().nullable().optional(),
   tags: z.array(z.string())
 });
 
@@ -69,6 +73,8 @@ export default async function tagRulesRoutes(fastify: FastifyInstance) {
         pattern: parsed.data.pattern,
         matchType: parsed.data.matchType,
         sourceField: parsed.data.sourceField,
+        minAmountDollars: parsed.data.minAmountDollars,
+        maxAmountDollars: parsed.data.maxAmountDollars,
         tags
       });
 
@@ -113,7 +119,13 @@ export default async function tagRulesRoutes(fastify: FastifyInstance) {
           name: parsed.data.name ?? existing.name,
           pattern,
           matchType,
-          sourceField: parsed.data.sourceField ?? existing.sourceField
+          sourceField: parsed.data.sourceField ?? existing.sourceField,
+          ...(parsed.data.minAmountDollars !== undefined
+            ? { minAmountDollars: parsed.data.minAmountDollars }
+            : {}),
+          ...(parsed.data.maxAmountDollars !== undefined
+            ? { maxAmountDollars: parsed.data.maxAmountDollars }
+            : {})
         },
         { new: true }
       );

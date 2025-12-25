@@ -17,6 +17,13 @@ import cashflowRoutes from "./routes/cashflow";
 import mandatorySavingsRoutes from "./routes/mandatorySavings";
 import notificationsRoutes from "./routes/notifications";
 import tagRulesRoutes from "./routes/tagRules";
+import usersRoutes from "./routes/users";
+import healthScoreRoutes from "./routes/healthScore";
+import anomaliesRoutes from "./routes/anomalies";
+import categorizationRoutes from "./routes/categorization";
+import insightsRoutes from "./routes/insights";
+import categoryRulesRoutes from "./routes/categoryRules";
+import { startAutoPlanCron } from "./services/autoPlanService";
 
 const app = Fastify({ logger: true });
 
@@ -50,12 +57,19 @@ app.register(cashflowRoutes, { prefix: "/cashflow" });
 app.register(mandatorySavingsRoutes, { prefix: "/mandatory-savings" });
 app.register(notificationsRoutes, { prefix: "/notifications" });
 app.register(tagRulesRoutes, { prefix: "/tag-rules" });
+app.register(usersRoutes, { prefix: "/users" });
+app.register(healthScoreRoutes);
+app.register(anomaliesRoutes);
+app.register(categorizationRoutes);
+app.register(insightsRoutes);
+app.register(categoryRulesRoutes, { prefix: "/category-rules" });
 
 const port = Number(process.env.PORT ?? 3000);
 
 const start = async () => {
   await connectDb();
   await app.listen({ port, host: "0.0.0.0" });
+  startAutoPlanCron();
 };
 
 start().catch((err) => {

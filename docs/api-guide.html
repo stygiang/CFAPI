@@ -1,0 +1,1119 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CFAPI Endpoint Guide</title>
+  <style>
+    :root {
+      --bg: #0f1218;
+      --panel: #151a22;
+      --text: #e7ecf2;
+      --muted: #9aa6b2;
+      --accent: #7dd3fc;
+      --border: #243042;
+      --code: #0b0e14;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    header {
+      padding: 32px 40px 12px;
+      border-bottom: 1px solid var(--border);
+    }
+    h1 { margin: 0 0 6px; font-size: 28px; }
+    h2 { margin: 28px 0 12px; font-size: 20px; }
+    h3 { margin: 18px 0 8px; font-size: 16px; color: var(--accent); }
+    p { margin: 8px 0; color: var(--muted); }
+    main { padding: 20px 40px 48px; }
+    .group { margin-bottom: 26px; }
+    .endpoint {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      margin-bottom: 14px;
+    }
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: baseline;
+      margin-bottom: 8px;
+    }
+    .method {
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      color: var(--accent);
+    }
+    .path { font-family: Consolas, "Courier New", monospace; }
+    .desc { color: var(--muted); }
+    code, pre {
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 12px;
+    }
+    pre {
+      background: var(--code);
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      overflow-x: auto;
+    }
+    .note { color: var(--muted); font-size: 12px; }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      font-size: 11px;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>CFAPI Endpoint Guide</h1>
+    <p>Base URL: <code>http://localhost:3000</code></p>
+    <p>All dates are returned as <code>YYYY-MM-DD</code>. Requests accept <code>YYYY-MM-DD</code> (ISO timestamps also accepted).</p>
+  </header>
+  <main>
+    <section class="group">
+      <h2>System</h2>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">GET</span>
+          <span class="path">/health</span>
+          <span class="desc">Health check</span>
+        </div>
+        <pre><code>{
+  "ok": true
+}</code></pre>
+      </div>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">GET</span>
+          <span class="path">/docs</span>
+          <span class="desc">OpenAPI JSON</span>
+        </div>
+        <pre><code># Returns OpenAPI JSON schema</code></pre>
+      </div>
+    </section>
+
+    <section class="group">
+      <h2>Auth</h2>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">POST</span>
+          <span class="path">/auth/register</span>
+          <span class="desc">Create a user account</span>
+        </div>
+        <pre><code># Request
+{
+  "email": "demo@demo.com",
+  "password": "password123"
+}
+
+# Response
+{
+  "id": "user_id",
+  "email": "demo@demo.com"
+}</code></pre>
+      </div>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">POST</span>
+          <span class="path">/auth/login</span>
+          <span class="desc">Get a JWT token</span>
+        </div>
+        <pre><code># Request
+{
+  "email": "demo@demo.com",
+  "password": "password123"
+}
+
+# Response
+{
+  "token": "jwt_token_here"
+}</code></pre>
+      </div>
+    </section>
+
+    <section class="group">
+      <h2>Users (Admin only)</h2>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">GET</span>
+          <span class="path">/users</span>
+          <span class="desc">List all users</span>
+        </div>
+        <pre><code># Response
+[
+  {
+    "id": "user_id",
+    "email": "demo@demo.com",
+    "createdAt": "2024-01-10"
+  }
+]</code></pre>
+      </div>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">GET</span>
+          <span class="path">/users?email=demo@demo.com</span>
+          <span class="desc">Filter users by email</span>
+        </div>
+        <pre><code># Response
+[
+  {
+    "id": "user_id",
+    "email": "demo@demo.com",
+    "createdAt": "2024-01-10"
+  }
+]</code></pre>
+      </div>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">GET</span>
+          <span class="path">/users/:id</span>
+          <span class="desc">Get a user by id</span>
+        </div>
+        <pre><code># Response
+{
+  "id": "user_id",
+  "email": "demo@demo.com",
+  "createdAt": "2024-01-10"
+}</code></pre>
+      </div>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">PATCH</span>
+          <span class="path">/users/:id</span>
+          <span class="desc">Update email and/or password</span>
+        </div>
+        <pre><code># Request
+{
+  "email": "new@demo.com",
+  "password": "newpassword123"
+}
+
+# Response
+{
+  "id": "user_id",
+  "email": "new@demo.com",
+  "createdAt": "2024-01-10"
+}</code></pre>
+      </div>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">DELETE</span>
+          <span class="path">/users/:id</span>
+          <span class="desc">Delete a user</span>
+        </div>
+        <pre><code># Response
+204 No Content</code></pre>
+      </div>
+    </section>
+
+    <section class="group">
+      <h2>Debts</h2>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">GET</span>
+          <span class="path">/debts</span>
+          <span class="desc">List debts</span>
+        </div>
+        <pre><code># Response
+[
+  {
+    "id": "debt_id",
+    "name": "Credit Card",
+    "principalDollars": 1200.5,
+    "aprBps": 1999,
+    "minPaymentDollars": 35.25,
+    "estimatedMonthlyPaymentDollars": 150.75,
+    "dueDayOfMonth": 12,
+    "estimatedPayoffDate": "2025-02-12",
+    "tags": ["credit-card"]
+  }
+]</code></pre>
+      </div>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">POST</span>
+          <span class="path">/debts</span>
+          <span class="desc">Create a debt</span>
+        </div>
+        <pre><code># Request
+{
+  "name": "Credit Card",
+  "principalDollars": 1200.5,
+  "aprBps": 1999,
+  "minPaymentDollars": 35.25,
+  "estimatedMonthlyPaymentDollars": 150.75,
+  "dueDayOfMonth": 12,
+  "tags": ["credit-card", "high-apr"]
+}
+
+# Response
+{ ...debt }</code></pre>
+      </div>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">PATCH</span>
+          <span class="path">/debts/:id</span>
+          <span class="desc">Update a debt</span>
+        </div>
+        <pre><code># Request
+{
+  "minPaymentDollars": 50,
+  "tags": ["loan"]
+}
+
+# Response
+{ ...debt }</code></pre>
+      </div>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">DELETE</span>
+          <span class="path">/debts/:id</span>
+          <span class="desc">Delete a debt</span>
+        </div>
+        <pre><code># Response
+204 No Content</code></pre>
+      </div>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">POST</span>
+          <span class="path">/debts/:id/payments</span>
+          <span class="desc">Record a payment</span>
+        </div>
+        <pre><code># Request
+{
+  "amountDollars": 150.75,
+  "paymentDate": "2024-01-20"
+}
+
+# Response
+{
+  "debt": { ...debt },
+  "payment": {
+    "id": "payment_id",
+    "debtId": "debt_id",
+    "amountDollars": 150.75,
+    "paymentDate": "2024-01-20"
+  }
+}</code></pre>
+      </div>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">GET</span>
+          <span class="path">/debts/:id/payments</span>
+          <span class="desc">List debt payments (optional startDate/endDate)</span>
+        </div>
+        <pre><code># Response
+[
+  {
+    "id": "payment_id",
+    "debtId": "debt_id",
+    "amountDollars": 150.75,
+    "paymentDate": "2024-01-20"
+  }
+]</code></pre>
+      </div>
+    </section>
+
+    <section class="group">
+      <h2>Bills</h2>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">GET</span>
+          <span class="path">/bills</span>
+          <span class="desc">List bills</span>
+        </div>
+        <pre><code># Response
+[
+  {
+    "id": "bill_id",
+    "name": "Rent",
+    "amountDollars": 1200.75,
+    "dueDayOfMonth": 1,
+    "frequency": "MONTHLY",
+    "isEssential": true,
+    "autopay": true
+  }
+]</code></pre>
+      </div>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">POST</span>
+          <span class="path">/bills</span>
+          <span class="desc">Create a bill</span>
+        </div>
+        <pre><code># Request
+{
+  "name": "Rent",
+  "amountDollars": 1200.75,
+  "dueDayOfMonth": 1,
+  "frequency": "MONTHLY",
+  "isEssential": true,
+  "autopay": true
+}
+
+# Response
+{ ...bill }</code></pre>
+      </div>
+    </section>
+
+    <section class="group">
+      <h2>Subscriptions</h2>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">GET</span>
+          <span class="path">/subscriptions</span>
+          <span class="desc">List subscriptions</span>
+        </div>
+        <pre><code># Response
+[
+  {
+    "id": "subscription_id",
+    "name": "Spotify",
+    "amountDollars": 10.99,
+    "billingDayOfMonth": 18,
+    "frequency": "MONTHLY",
+    "cancelable": true
+  }
+]</code></pre>
+      </div>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">POST</span>
+          <span class="path">/subscriptions</span>
+          <span class="desc">Create a subscription</span>
+        </div>
+        <pre><code># Request
+{
+  "name": "Spotify",
+  "amountDollars": 10.99,
+  "billingDayOfMonth": 18,
+  "frequency": "MONTHLY",
+  "cancelable": true
+}
+
+# Response
+{ ...subscription }</code></pre>
+      </div>
+    </section>
+
+    <section class="group">
+      <h2>Income Streams</h2>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">GET</span>
+          <span class="path">/income-streams</span>
+          <span class="desc">List income streams</span>
+        </div>
+        <pre><code># Response
+[
+  {
+    "id": "income_id",
+    "name": "Paycheck",
+    "amountDollars": 2500.5,
+    "cadence": "BIWEEKLY",
+    "nextPayDate": "2024-01-05",
+    "amountChangeStatus": "NO_HISTORY",
+    "tags": ["job"]
+  }
+]</code></pre>
+      </div>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">POST</span>
+          <span class="path">/income-streams</span>
+          <span class="desc">Create an income stream</span>
+        </div>
+        <pre><code># Request
+{
+  "name": "Paycheck",
+  "amountDollars": 2500.5,
+  "cadence": "BIWEEKLY",
+  "nextPayDate": "2024-01-05",
+  "tags": ["job", "primary"]
+}
+
+# Response
+{ ...incomeStream }</code></pre>
+      </div>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">PATCH</span>
+          <span class="path">/income-streams/:id</span>
+          <span class="desc">Update an income stream</span>
+        </div>
+        <pre><code># Request
+{
+  "amountDollars": 3100.75,
+  "tags": ["job", "bonus"]
+}
+
+# Response
+{ ...incomeStream }</code></pre>
+      </div>
+    </section>
+
+    <section class="group">
+      <h2>Savings Goals</h2>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">GET</span>
+          <span class="path">/savings-goals</span>
+          <span class="desc">List savings goals</span>
+        </div>
+        <pre><code># Response
+[
+  {
+    "id": "goal_id",
+    "name": "Emergency Fund",
+    "targetDollars": 1500,
+    "currentDollars": 0,
+    "ruleType": "FIXED_PER_PAYCHECK",
+    "ruleValueBpsOrDollars": 75,
+    "priority": 1
+  }
+]</code></pre>
+      </div>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">POST</span>
+          <span class="path">/savings-goals</span>
+          <span class="desc">Create a savings goal</span>
+        </div>
+        <pre><code># Request
+{
+  "name": "Emergency Fund",
+  "targetDollars": 1500,
+  "currentDollars": 0,
+  "ruleType": "FIXED_PER_PAYCHECK",
+  "ruleValueBpsOrDollars": 75,
+  "priority": 1
+}
+
+# Response
+{ ...savingsGoal }</code></pre>
+      </div>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">POST</span>
+          <span class="path">/savings-goals/:id/contributions</span>
+          <span class="desc">Add a contribution</span>
+        </div>
+        <pre><code># Request
+{
+  "amountDollars": 50
+}
+
+# Response
+{ ...savingsGoal }</code></pre>
+      </div>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">POST</span>
+          <span class="path">/savings-goals/auto-allocate</span>
+          <span class="desc">Auto-allocate by rules for a date</span>
+        </div>
+        <pre><code># Request
+{
+  "date": "2024-02-01"
+}
+
+# Response
+{
+  "allocations": [
+    { "goalId": "goal_id", "amountDollars": 75 }
+  ]
+}</code></pre>
+      </div>
+    </section>
+
+    <section class="group">
+      <h2>Mandatory Savings</h2>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">GET</span>
+          <span class="path">/mandatory-savings?startDate=2024-01-01</span>
+          <span class="desc">Get mandatory savings summary</span>
+        </div>
+        <pre><code># Response
+{
+  "id": "mandatory_id",
+  "monthsToSave": 3,
+  "targetDollars": 1200,
+  "currentDollars": 250,
+  "monthlyContributionDollars": 150,
+  "percentFunded": 20.83
+}</code></pre>
+      </div>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">PUT</span>
+          <span class="path">/mandatory-savings</span>
+          <span class="desc">Create or update settings</span>
+        </div>
+        <pre><code># Request
+{
+  "monthsToSave": 3,
+  "currentDollars": 250
+}
+
+# Response
+{ ...mandatorySavings }</code></pre>
+      </div>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">POST</span>
+          <span class="path">/mandatory-savings/contributions</span>
+          <span class="desc">Add a contribution</span>
+        </div>
+        <pre><code># Request
+{
+  "amountDollars": 50
+}
+
+# Response
+{ ...mandatorySavings }</code></pre>
+      </div>
+    </section>
+
+    <section class="group">
+      <h2>Transactions</h2>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">GET</span>
+          <span class="path">/transactions?startDate=2024-02-01&amp;endDate=2024-02-29</span>
+          <span class="desc">List transactions by date range</span>
+        </div>
+        <pre><code># Response
+[
+  {
+    "id": "tx_id",
+    "date": "2024-02-01",
+    "amountDollars": -45.99,
+    "merchant": "Grocery Store",
+    "tags": ["food", "essentials"]
+  }
+]</code></pre>
+      </div>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">GET</span>
+          <span class="path">/transactions?tag=food</span>
+          <span class="desc">Filter by tag</span>
+        </div>
+        <pre><code># Response
+[ { ...transaction } ]</code></pre>
+      </div>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">POST</span>
+          <span class="path">/transactions</span>
+          <span class="desc">Create a transaction</span>
+        </div>
+        <pre><code># Request
+{
+  "date": "2024-02-01",
+  "amountDollars": -45.99,
+  "merchant": "Grocery Store",
+  "tags": ["food", "essentials"]
+}
+
+# Response
+{ ...transaction }</code></pre>
+      </div>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">PATCH</span>
+          <span class="path">/transactions/:id/tags</span>
+          <span class="desc">Replace tags (optional learnRule)</span>
+        </div>
+        <pre><code># Request
+{
+  "tags": ["food"],
+  "learnRule": {
+    "enabled": true,
+    "sourceField": "MERCHANT",
+    "matchType": "CONTAINS",
+    "pattern": "Starbucks",
+    "name": "Coffee shops"
+  }
+}
+
+# Response
+{ ...transaction }</code></pre>
+      </div>
+    </section>
+
+    <section class="group">
+      <h2>Categorization Rules</h2>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">GET</span>
+          <span class="path">/tag-rules</span>
+          <span class="desc">List rules</span>
+        </div>
+        <pre><code># Response
+[ { ...tagRule } ]</code></pre>
+      </div>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">POST</span>
+          <span class="path">/tag-rules</span>
+          <span class="desc">Create a rule</span>
+        </div>
+        <pre><code># Request
+{
+  "name": "Coffee shops",
+  "pattern": "Starbucks",
+  "matchType": "CONTAINS",
+  "sourceField": "MERCHANT",
+  "tags": ["coffee", "food"]
+}
+
+# Response
+{ ...tagRule }</code></pre>
+      </div>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">PATCH</span>
+          <span class="path">/tag-rules/:id</span>
+          <span class="desc">Update a rule</span>
+        </div>
+        <pre><code># Request
+{
+  "name": "Coffee (updated)",
+  "tags": ["coffee"]
+}
+
+# Response
+{ ...tagRule }</code></pre>
+      </div>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">DELETE</span>
+          <span class="path">/tag-rules/:id</span>
+          <span class="desc">Delete a rule</span>
+        </div>
+        <pre><code># Response
+204 No Content</code></pre>
+      </div>
+    </section>
+
+    <section class="group">
+      <h2>Budgets</h2>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">GET</span>
+          <span class="path">/budgets?date=2024-01-01</span>
+          <span class="desc">List budgets with status</span>
+        </div>
+        <pre><code># Response
+[
+  {
+    "id": "budget_id",
+    "name": "Food",
+    "amountDollars": 500,
+    "period": "MONTHLY",
+    "tagName": "food",
+    "status": {
+      "periodStart": "2024-01-01",
+      "periodEnd": "2024-01-31",
+      "spentDollars": 120,
+      "remainingDollars": 380,
+      "isOverBudget": false,
+      "overspendDollars": 0
+    }
+  }
+]</code></pre>
+      </div>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">POST</span>
+          <span class="path">/budgets</span>
+          <span class="desc">Create a budget</span>
+        </div>
+        <pre><code># Request
+{
+  "name": "Food",
+  "amountDollars": 500,
+  "period": "MONTHLY",
+  "tagName": "food"
+}
+
+# Response
+{ ...budget }</code></pre>
+      </div>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">PATCH</span>
+          <span class="path">/budgets/:id</span>
+          <span class="desc">Update a budget</span>
+        </div>
+        <pre><code># Request
+{
+  "amountDollars": 600
+}
+
+# Response
+{ ...budget }</code></pre>
+      </div>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">DELETE</span>
+          <span class="path">/budgets/:id</span>
+          <span class="desc">Delete a budget</span>
+        </div>
+        <pre><code># Response
+204 No Content</code></pre>
+      </div>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">GET</span>
+          <span class="path">/budgets/suggestions?basis=TAG&amp;monthsBack=3&amp;includeUncategorized=true</span>
+          <span class="desc">Get adaptive suggestions</span>
+        </div>
+        <pre><code># Response
+{
+  "basis": "TAG",
+  "summary": {
+    "monthsBack": 3,
+    "fromDate": "2023-11-01",
+    "toDate": "2024-01-31",
+    "incomeMonthly": 4000,
+    "fixedObligationsMonthly": 1500,
+    "discretionaryMonthly": 2500,
+    "avgSpendMonthly": 1200,
+    "scaleFactor": 2.08,
+    "warnings": []
+  },
+  "suggestions": [
+    {
+      "keyId": "tag_id",
+      "keyName": "food",
+      "avgSpendMonthly": 300,
+      "suggestedMonthly": 625,
+      "percentOfSpend": 25
+    }
+  ]
+}</code></pre>
+      </div>
+    </section>
+
+    <section class="group">
+      <h2>Cashflow</h2>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">POST</span>
+          <span class="path">/cashflow/forecast</span>
+          <span class="desc">Forecast cashflow</span>
+        </div>
+        <pre><code># Request
+{
+  "startDate": "2024-01-01",
+  "horizonMonths": 3,
+  "startingBalanceDollars": 500,
+  "minBufferDollars": 0
+}
+
+# Response
+{
+  "summary": {
+    "startDate": "2024-01-01",
+    "endDate": "2024-03-31",
+    "startingBalanceDollars": 500,
+    "endingBalanceDollars": 1200,
+    "minBalanceDollars": 200,
+    "shortfallCount": 0
+  },
+  "timeline": [
+    {
+      "date": "2024-01-05",
+      "type": "INCOME",
+      "amountDollars": 2500,
+      "runningBalanceDollars": 3000
+    }
+  ],
+  "alerts": []
+}
+</code></pre>
+      </div>
+    </section>
+
+    <section class="group">
+      <h2>Plans</h2>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">POST</span>
+          <span class="path">/plans/preview</span>
+          <span class="desc">Preview a plan</span>
+        </div>
+        <pre><code># Request
+{
+  "name": "My Plan",
+  "strategy": "AVALANCHE",
+  "startDate": "2024-01-01",
+  "horizonMonths": 24,
+  "rules": {
+    "savingsFloorDollarsPerMonth": 0,
+    "minCheckingBufferDollars": 500,
+    "allowCancelSubscriptions": false,
+    "treatNonessentialBillsAsSkippable": false
+  }
+}
+
+# Response
+{
+  "disclaimer": "NOT FINANCIAL ADVICE",
+  "summary": {
+    "debtFreeDate": "2025-06-01",
+    "totalInterestDollars": 320,
+    "months": 24,
+    "missedBillsCount": 0,
+    "missedDebtMinsCount": 0
+  },
+  "schedule": [
+    {
+      "date": "2024-01-01",
+      "type": "INCOME",
+      "amountDollars": 2500
+    }
+  ],
+  "endingBalances": {
+    "debts": [],
+    "savings": [],
+    "cashBufferDollars": 800
+  },
+  "warnings": []
+}
+</code></pre>
+      </div>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">POST</span>
+          <span class="path">/plans</span>
+          <span class="desc">Create a plan</span>
+        </div>
+        <pre><code># Request
+{ ...same as /plans/preview }
+
+# Response
+{
+  "id": "plan_id",
+  "disclaimer": "NOT FINANCIAL ADVICE",
+  "summary": { ... },
+  "schedule": [ ... ],
+  "endingBalances": { ... },
+  "warnings": []
+}
+</code></pre>
+      </div>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">GET</span>
+          <span class="path">/plans</span>
+          <span class="desc">List saved plans</span>
+        </div>
+        <pre><code># Response
+[
+  {
+    "id": "plan_id",
+    "name": "My Plan",
+    "strategy": "AVALANCHE",
+    "horizonMonths": 24,
+    "startDate": "2024-01-01",
+    "summary": { ... },
+    "createdAt": "2024-01-01"
+  }
+]
+</code></pre>
+      </div>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">GET</span>
+          <span class="path">/plans/:id</span>
+          <span class="desc">Get a plan with schedule</span>
+        </div>
+        <pre><code># Response
+{
+  "id": "plan_id",
+  "name": "My Plan",
+  "strategy": "AVALANCHE",
+  "horizonMonths": 24,
+  "startDate": "2024-01-01",
+  "summary": { ... },
+  "warnings": [],
+  "schedule": [ ... ],
+  "disclaimer": "NOT FINANCIAL ADVICE"
+}
+</code></pre>
+      </div>
+    </section>
+
+    <section class="group">
+      <h2>Plaid</h2>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">POST</span>
+          <span class="path">/plaid/link-token</span>
+          <span class="desc">Create a Plaid link token</span>
+        </div>
+        <pre><code># Response
+{
+  "linkToken": "link-sandbox-..."
+}
+</code></pre>
+      </div>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">POST</span>
+          <span class="path">/plaid/exchange</span>
+          <span class="desc">Exchange public token</span>
+        </div>
+        <pre><code># Request
+{
+  "publicToken": "public-sandbox-..."
+}
+
+# Response
+{
+  "itemId": "item_id"
+}
+</code></pre>
+      </div>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">POST</span>
+          <span class="path">/plaid/transactions/sync</span>
+          <span class="desc">Sync Plaid transactions</span>
+        </div>
+        <pre><code># Request
+{ "forceFullSync": false }
+
+# Response
+{ "itemId": "item_id", "added": 10, "modified": 2, "removed": 0 }
+</code></pre>
+      </div>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">GET</span>
+          <span class="path">/plaid/items</span>
+          <span class="desc">List connected items</span>
+        </div>
+        <pre><code># Response
+[ { ...item } ]
+</code></pre>
+      </div>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">POST</span>
+          <span class="path">/plaid/webhook</span>
+          <span class="badge">no auth</span>
+          <span class="desc">Plaid webhook handler</span>
+        </div>
+        <pre><code># Response
+{ "ok": true }
+</code></pre>
+      </div>
+    </section>
+
+    <section class="group">
+      <h2>Health Score</h2>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">GET</span>
+          <span class="path">/health-score?horizonMonths=3&amp;startingBalanceDollars=500&amp;minBufferDollars=0</span>
+          <span class="desc">Financial health score with explainability</span>
+        </div>
+        <pre><code># Response
+{
+  "score": 82,
+  "grade": "B",
+  "generatedAt": "2024-02-01",
+  "factors": {
+    "debtToIncome": {
+      "value": 0.14,
+      "trend": -0.1,
+      "score": 0.87,
+      "explanation": "Debt-to-income: 14% (down 10%)."
+    },
+    "savingsRate": {
+      "value": 0.08,
+      "trend": 0.04,
+      "score": 0.4,
+      "explanation": "Savings rate: 8% (up 4%)."
+    },
+    "essentialCoverageRatio": {
+      "value": 1.3,
+      "trend": null,
+      "score": 0.6,
+      "explanation": "Essential coverage ratio: 1.3x."
+    },
+    "billRisk": {
+      "value": 0.12,
+      "trend": null,
+      "score": 0.6,
+      "shortfallCount": 2,
+      "maxShortfallDollars": 180,
+      "explanation": "Bill risk: 12% of event days projected below buffer."
+    }
+  },
+  "nudges": [
+    "Move $120 from 'fun' to 'groceries' this month to avoid a shortfall."
+  ]
+}
+</code></pre>
+      </div>
+    </section>
+
+    <section class="group">
+      <h2>Notifications</h2>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">GET</span>
+          <span class="path">/notifications?unreadOnly=true</span>
+          <span class="desc">List notifications</span>
+        </div>
+        <pre><code># Response
+[
+  {
+    "id": "note_id",
+    "type": "SAVINGS_MILESTONE",
+    "message": "Emergency Fund reached 25%",
+    "createdAt": "2024-02-01",
+    "readAt": null
+  }
+]
+</code></pre>
+      </div>
+      <div class="endpoint">
+        <div class="meta">
+          <span class="method">PATCH</span>
+          <span class="path">/notifications/:id/read</span>
+          <span class="desc">Mark notification as read</span>
+        </div>
+        <pre><code># Response
+{
+  "id": "note_id",
+  "type": "SAVINGS_MILESTONE",
+  "message": "Emergency Fund reached 25%",
+  "createdAt": "2024-02-01",
+  "readAt": "2024-02-05"
+}
+</code></pre>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

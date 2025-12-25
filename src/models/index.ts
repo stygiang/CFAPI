@@ -110,7 +110,9 @@ const TagRuleSchema = new Schema(
     name: { type: String, required: true },
     pattern: { type: String, required: true },
     matchType: { type: String, enum: TagRuleMatchTypeValues, required: true },
-    sourceField: { type: String, enum: TagRuleSourceFieldValues, required: true }
+    sourceField: { type: String, enum: TagRuleSourceFieldValues, required: true },
+    minAmountDollars: Number,
+    maxAmountDollars: Number
   },
   schemaOptions(true)
 );
@@ -120,6 +122,37 @@ TagRuleSchema.virtual("tags", {
   localField: "_id",
   foreignField: "tagRuleId"
 });
+
+const CategoryRuleSchema = new Schema(
+  {
+    userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    name: { type: String, required: true },
+    pattern: { type: String, required: true },
+    matchType: { type: String, enum: TagRuleMatchTypeValues, required: true },
+    sourceField: { type: String, enum: TagRuleSourceFieldValues, required: true },
+    categoryId: { type: Schema.Types.ObjectId, ref: "Category", required: true },
+    minAmountDollars: Number,
+    maxAmountDollars: Number
+  },
+  schemaOptions(true)
+);
+CategoryRuleSchema.index({ userId: 1 });
+CategoryRuleSchema.index({ categoryId: 1 });
+
+const CategorizationReviewSchema = new Schema(
+  {
+    userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    transactionId: { type: Schema.Types.ObjectId, ref: "Transaction", required: true },
+    suggestedCategoryId: { type: Schema.Types.ObjectId, ref: "Category" },
+    suggestedTags: { type: [String], default: [] },
+    confidence: { type: Number, required: true },
+    reasons: { type: [String], default: [] },
+    status: { type: String, enum: ["PENDING", "APPLIED", "DISMISSED"], default: "PENDING" }
+  },
+  schemaOptions(true)
+);
+CategorizationReviewSchema.index({ userId: 1 });
+CategorizationReviewSchema.index({ transactionId: 1 });
 
 const BudgetSchema = new Schema(
   {
@@ -356,6 +389,11 @@ export const CategoryModel = mongoose.models.Category || mongoose.model("Categor
 export const TransactionModel =
   mongoose.models.Transaction || mongoose.model("Transaction", TransactionSchema);
 export const TagRuleModel = mongoose.models.TagRule || mongoose.model("TagRule", TagRuleSchema);
+export const CategoryRuleModel =
+  mongoose.models.CategoryRule || mongoose.model("CategoryRule", CategoryRuleSchema);
+export const CategorizationReviewModel =
+  mongoose.models.CategorizationReview ||
+  mongoose.model("CategorizationReview", CategorizationReviewSchema);
 export const BudgetModel = mongoose.models.Budget || mongoose.model("Budget", BudgetSchema);
 export const BillModel = mongoose.models.Bill || mongoose.model("Bill", BillSchema);
 export const SubscriptionModel =
