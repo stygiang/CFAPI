@@ -11,8 +11,10 @@ import {
 import { ensureTags, normalizeTags } from "../services/tagService";
 import { buildBudgetSuggestions } from "../services/budgetSuggestionService";
 import { decimalToNumber } from "../utils/decimal";
+import { toDollars } from "../utils/money";
 import { parseDate, toDateKey, toDateOnly } from "../utils/dates";
 import { dateString, parseWithSchema } from "../utils/validation";
+import { buildCacheKey, getCachedJson, setCachedJson } from "../services/cache";
 
 const dateInputSchema = dateString;
 
@@ -169,6 +171,8 @@ export default async function budgetsRoutes(fastify: FastifyInstance) {
   // Compute spending and overspend data for a budget.
   const buildBudgetStatus = async (budget: any, referenceDate: Date) => {
     const { start, end } = resolvePeriodWindow(budget.period, referenceDate);
+    const createdAt = budget.createdAt ? new Date(budget.createdAt) : null;
+    const effectiveStart = createdAt && createdAt > start ? createdAt : start;
 
     const where: {
       userId: string;
@@ -180,7 +184,7 @@ export default async function budgetsRoutes(fastify: FastifyInstance) {
     } = {
       userId: budget.userId,
       deletedAt: null,
-      date: { $gte: start, $lte: end },
+      date: { $gte: effectiveStart, $lte: end },
       amountDollars: { $lt: 0 }
     };
 
@@ -203,7 +207,7 @@ export default async function budgetsRoutes(fastify: FastifyInstance) {
       const txIds = tagLinks.map((link) => link.transactionId);
       if (txIds.length === 0) {
         return {
-          periodStart: toDateKey(start),
+          periodStart: toDateKey(effectiveStart),
           periodEnd: toDateKey(end),
           spentDollars: 0,
           remainingDollars: decimalToNumber(budget.amountDollars),
@@ -226,7 +230,7 @@ export default async function budgetsRoutes(fastify: FastifyInstance) {
     const overspendDollars = remainingDollars < 0 ? Math.abs(remainingDollars) : 0;
 
     return {
-      periodStart: toDateKey(start),
+      periodStart: toDateKey(effectiveStart),
       periodEnd: toDateKey(end),
       spentDollars,
       remainingDollars,
@@ -254,6 +258,15 @@ export default async function budgetsRoutes(fastify: FastifyInstance) {
         ? parseDate(parsed.data.date)
         : new Date();
       const userId = request.user.sub;
+      const cacheKey = buildCacheKey([
+        "budgets",
+        userId,
+        toDateKey(referenceDate)
+      ]);
+      const cached = await getCachedJson<unknown[]>(cacheKey);
+      if (cached) {
+        return cached;
+      }
 
       const budgets = await BudgetModel.find({ userId })
         .sort({ createdAt: -1 })
@@ -267,6 +280,7 @@ export default async function budgetsRoutes(fastify: FastifyInstance) {
         })
       );
 
+      await setCachedJson(cacheKey, results);
       return results;
     }
   );

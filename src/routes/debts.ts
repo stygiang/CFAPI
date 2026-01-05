@@ -6,7 +6,7 @@ import { decimalToNumber } from "../utils/decimal";
 import { parseDateFlexible, toDateOnly } from "../utils/dates";
 import { estimatePayoffDate } from "../services/debtEstimator";
 import { normalizeTags, replaceDebtTags } from "../services/tagService";
-import { toDollars } from "../utils/money";
+import { fromCents, toCents, toDollars } from "../utils/money";
 import { dateString, parseWithSchema } from "../utils/validation";
 import { scheduleAutoPlanCheck } from "../services/autoPlanService";
 
@@ -37,11 +37,19 @@ export default async function debtsRoutes(fastify: FastifyInstance) {
 
     return {
       ...rest,
-      principalDollars: decimalToNumber(data.principalDollars),
-      minPaymentDollars: decimalToNumber(data.minPaymentDollars),
+      principalDollars:
+        data.principalCents != null
+          ? fromCents(data.principalCents)
+          : decimalToNumber(data.principalDollars),
+      minPaymentDollars:
+        data.minPaymentCents != null
+          ? fromCents(data.minPaymentCents)
+          : decimalToNumber(data.minPaymentDollars),
       estimatedMonthlyPaymentDollars:
         data.estimatedMonthlyPaymentDollars != null
-          ? decimalToNumber(data.estimatedMonthlyPaymentDollars)
+          ? data.estimatedMonthlyPaymentCents != null
+            ? fromCents(data.estimatedMonthlyPaymentCents)
+            : decimalToNumber(data.estimatedMonthlyPaymentDollars)
           : undefined,
       estimatedPayoffDate: toDateOnly(data.estimatedPayoffDate),
       tags: debtTags
@@ -107,9 +115,12 @@ export default async function debtsRoutes(fastify: FastifyInstance) {
       const created = await DebtModel.create({
         name: parsed.data.name,
         principalDollars: parsed.data.principalDollars,
+        principalCents: toCents(parsed.data.principalDollars),
         aprBps: parsed.data.aprBps,
         minPaymentDollars: parsed.data.minPaymentDollars,
+        minPaymentCents: toCents(parsed.data.minPaymentDollars),
         estimatedMonthlyPaymentDollars,
+        estimatedMonthlyPaymentCents: toCents(estimatedMonthlyPaymentDollars),
         dueDayOfMonth: parsed.data.dueDayOfMonth,
         estimatedPayoffDate,
         userId
@@ -172,10 +183,20 @@ export default async function debtsRoutes(fastify: FastifyInstance) {
       const updateData: typeof parsed.data & {
         estimatedPayoffDate: Date | null;
         estimatedMonthlyPaymentDollars?: number;
+        estimatedMonthlyPaymentCents?: number;
+        principalCents?: number;
+        minPaymentCents?: number;
       } = { ...parsed.data, estimatedPayoffDate };
 
       if (userProvidedEstimated !== undefined || shouldInheritMin) {
         updateData.estimatedMonthlyPaymentDollars = effectiveEstimatedMonthly;
+        updateData.estimatedMonthlyPaymentCents = toCents(effectiveEstimatedMonthly);
+      }
+      if (parsed.data.principalDollars !== undefined) {
+        updateData.principalCents = toCents(parsed.data.principalDollars);
+      }
+      if (parsed.data.minPaymentDollars !== undefined) {
+        updateData.minPaymentCents = toCents(parsed.data.minPaymentDollars);
       }
 
       const tagNames =
@@ -280,7 +301,10 @@ const debtPaymentResponseSchema = z.object({
       return payments.map((payment) => ({
         id: payment.id,
         debtId: payment.debtId.toString(),
-        amountDollars: decimalToNumber(payment.amountDollars),
+        amountDollars:
+          payment.amountCents != null
+            ? fromCents(payment.amountCents)
+            : decimalToNumber(payment.amountDollars),
         paymentDate: toDateOnly(payment.paymentDate)
       }));
     }
@@ -328,6 +352,7 @@ const debtPaymentResponseSchema = z.object({
         userId,
         debtId: debt.id,
         amountDollars: paymentAmount,
+        amountCents: toCents(paymentAmount),
         paymentDate
       });
       const updatedDebt = await DebtModel.findByIdAndUpdate(
@@ -341,7 +366,10 @@ const debtPaymentResponseSchema = z.object({
         payment: {
           id: payment.id,
           debtId: payment.debtId,
-          amountDollars: decimalToNumber(payment.amountDollars),
+          amountDollars:
+            payment.amountCents != null
+              ? fromCents(payment.amountCents)
+              : decimalToNumber(payment.amountDollars),
           paymentDate: toDateOnly(payment.paymentDate)
         }
       };

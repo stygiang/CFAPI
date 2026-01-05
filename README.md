@@ -35,7 +35,6 @@ OpenAPI JSON:
 All endpoints require `Authorization: Bearer <TOKEN>` except:
 - `GET /health`
 - `GET /docs`
-- `POST /plaid/webhook`
 
 Admin-only endpoints require the authenticated user's email to be listed in
 `ADMIN_EMAILS` (comma-separated) in `.env`.
@@ -49,6 +48,8 @@ System
 Auth
 - `POST /auth/register`
 - `POST /auth/login`
+- `POST /auth/refresh`
+- `POST /auth/logout`
 
 Users (Admin only)
 - `GET /users`
@@ -88,10 +89,26 @@ Savings
 - `POST /mandatory-savings/contributions`
 
 Transactions + Tags
-- `GET /transactions?startDate&endDate&tag&includeDeleted`
+- `GET /transactions?startDate&endDate&tag&includeDeleted&limit&cursor`
 - `POST /transactions`
 - `PATCH /transactions/:id/tags`
 - `PATCH /transactions/:id/category`
+
+Purchase Goals (Sinking Funds)
+- `POST /goals/purchases`
+- `GET /goals/purchases?status&cadence`
+- `PATCH /goals/purchases/:id`
+- `POST /goals/purchases/:id/pause`
+- `POST /goals/purchases/:id/resume`
+- `POST /goals/purchases/:id/cancel`
+- `GET /goals/purchases/:id/plan?horizonDays`
+- `POST /planner/run`
+- `GET /balances/safe-to-spend`
+
+Profile
+- `GET /me/pay-schedule`
+- `PATCH /me/pay-schedule`
+- `DELETE /me/pay-schedule`
 
 Categorization Rules
 - `GET /tag-rules`
@@ -122,6 +139,10 @@ Cashflow
 Insights
 - `GET /insights/recurring?monthsBack`
 - `GET /insights/ledger?startDate&horizonMonths`
+- `GET /insights/purchase-cycles?status&type`
+- `POST /insights/purchase-cycles/:id/confirm`
+- `POST /insights/purchase-cycles/:id/dismiss`
+- `POST /insights/purchase-cycles/:id/convert-to-goal`
 
 Plans
 - `POST /plans/preview`
@@ -129,12 +150,6 @@ Plans
 - `GET /plans`
 - `GET /plans/:id`
 
-Plaid
-- `POST /plaid/link-token`
-- `POST /plaid/exchange`
-- `POST /plaid/transactions/sync`
-- `GET /plaid/items`
-- `POST /plaid/webhook` (no auth)
 
 Notifications
 - `GET /notifications?unreadOnly`
@@ -145,6 +160,9 @@ Health Score
 
 Anomalies
 - `GET /anomalies?monthsBack&unusualMultipliers&minUnusualAmountDollars&duplicateWindowDays`
+
+Jobs (internal)
+- `POST /jobs/auto-plan/run`
 
 ## Examples
 
@@ -159,6 +177,16 @@ curl -X POST http://localhost:3000/auth/register \
 curl -X POST http://localhost:3000/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"demo@demo.com","password":"password123"}'
+
+# Refresh
+curl -X POST http://localhost:3000/auth/refresh \
+  -H "Content-Type: application/json" \
+  -d '{"refreshToken":"<REFRESH_TOKEN>"}'
+
+# Logout
+curl -X POST http://localhost:3000/auth/logout \
+  -H "Content-Type: application/json" \
+  -d '{"refreshToken":"<REFRESH_TOKEN>"}'
 ```
 
 Debts
@@ -206,6 +234,10 @@ curl -X POST http://localhost:3000/transactions \
 
 # List transactions by date range
 curl "http://localhost:3000/transactions?startDate=2024-02-01&endDate=2024-02-29" \
+  -H "Authorization: Bearer <TOKEN>"
+
+# Paginate transactions
+curl "http://localhost:3000/transactions?limit=50" \
   -H "Authorization: Bearer <TOKEN>"
 
 # Update transaction category (optional learnRule)
@@ -263,6 +295,20 @@ curl "http://localhost:3000/insights/recurring?monthsBack=6" \
 
 curl "http://localhost:3000/insights/ledger?startDate=2024-01-01&horizonMonths=3" \
   -H "Authorization: Bearer <TOKEN>"
+
+# Purchase cycles
+curl "http://localhost:3000/insights/purchase-cycles?status=suggested" \
+  -H "Authorization: Bearer <TOKEN>"
+
+curl -X POST http://localhost:3000/insights/purchase-cycles/<PATTERN_ID>/confirm \
+  -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"labelOverride":"Phone upgrade","allowAutoFund":false}'
+
+curl -X POST http://localhost:3000/insights/purchase-cycles/<PATTERN_ID>/convert-to-goal \
+  -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"cadence":"weekly","priority":2}'
 ```
 
 Plans
@@ -285,26 +331,48 @@ curl -X POST http://localhost:3000/plans/preview \
   }'
 ```
 
-Plaid
+Purchase Goals
 ```bash
-# Create a link token
-curl -X POST http://localhost:3000/plaid/link-token \
+# Create a purchase goal
+curl -X POST http://localhost:3000/goals/purchases \
   -H "Authorization: Bearer <TOKEN>" \
   -H "Content-Type: application/json" \
-  -d '{}'
+  -d '{
+    "name": "New Laptop",
+    "targetAmountCents": 150000,
+    "targetDate": "2025-06-01",
+    "cadence": "weekly",
+    "priority": 2
+  }'
 
-# Exchange a public token
-curl -X POST http://localhost:3000/plaid/exchange \
-  -H "Authorization: Bearer <TOKEN>" \
-  -H "Content-Type: application/json" \
-  -d '{"publicToken":"<PUBLIC_TOKEN>"}'
+# Preview allocations
+curl "http://localhost:3000/goals/purchases/<GOAL_ID>/plan?horizonDays=60" \
+  -H "Authorization: Bearer <TOKEN>"
 
-# Sync transactions
-curl -X POST http://localhost:3000/plaid/transactions/sync \
+# Run planner
+curl -X POST http://localhost:3000/planner/run \
   -H "Authorization: Bearer <TOKEN>" \
   -H "Content-Type: application/json" \
-  -d '{"forceFullSync": false}'
+  -d '{"cadence":"both","dryRun":false}'
+
+# Safe-to-spend
+curl http://localhost:3000/balances/safe-to-spend \
+  -H "Authorization: Bearer <TOKEN>"
 ```
+
+Profile
+```bash
+# Set pay schedule
+curl -X PATCH http://localhost:3000/me/pay-schedule \
+  -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"frequency":"biweekly","nextPayDate":"2025-02-01","amountCents":250000}'
+
+# Get pay schedule
+curl http://localhost:3000/me/pay-schedule \
+  -H "Authorization: Bearer <TOKEN>"
+```
+
 
 Admin
 ```bash
@@ -336,10 +404,10 @@ curl "http://localhost:3000/anomalies?monthsBack=3&unusualMultipliers=2,3&minUnu
 - Savings goal contributions emit milestone notifications at 25/50/75/100%.
 - Plan previews include mandatory savings as a monthly contribution when configured.
 - Debts include `estimatedMonthlyPaymentDollars` and `estimatedPayoffDate` (computed and updated on payments).
-- Plaid access tokens are stored encrypted using `PLAID_ENCRYPTION_KEY`.
-- Plaid transaction amounts are stored as negative for outflows and positive for inflows.
-- Plaid removals soft-delete transactions (`deletedAt`), and updated transactions overwrite existing ones.
 - Planning responses include a `disclaimer` field: `NOT FINANCIAL ADVICE`.
-- Auto plan creation runs on debt/transaction adds and daily cron when enabled via `AUTO_PLAN_*` env vars.
+- Auto plan creation runs on debt/transaction adds and via external scheduler hitting `/jobs/auto-plan/run`.
 - Auto-categorization applies high-confidence matches and queues the rest in `/categorization/review`.
 - Auto-categorization confidence threshold can be set with `AUTO_CATEGORIZATION_CONFIDENCE`.
+- Purchase goals are virtual reserves (no real transfers) and planner runs in the worker.
+- Shock absorber can pause purchase-goal funding and suggest reducing extra debt payments when overspend/anomalies occur (see `PLANNER_SHOCK_MODE`).
+- Purchase cycles detect lumpy purchases and can be confirmed/dismissed or converted into purchase goals.

@@ -15,7 +15,6 @@ import {
   NotificationModel,
   PlanItemModel,
   PlanModel,
-  PlaidItemModel,
   SavingsGoalModel,
   SubscriptionModel,
   TagModel,
@@ -29,6 +28,8 @@ import { calculateMandatorySavingsTarget } from "./services/savingsService";
 
 const seed = async () => {
   await connectDb();
+
+  const daysAgo = (days: number) => new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
   const email = "demo@smartfinance.local";
   const existing = await UserModel.findOne({ email });
@@ -60,7 +61,6 @@ const seed = async () => {
       NotificationModel.deleteMany({ userId }),
       PlanModel.deleteMany({ userId }),
       PlanItemModel.deleteMany({ userId }),
-      PlaidItemModel.deleteMany({ userId }),
       TagModel.deleteMany({ userId }),
       TagRuleModel.deleteMany({ userId }),
       TransactionModel.deleteMany({ userId }),
@@ -79,6 +79,13 @@ const seed = async () => {
   const passwordHash = await bcrypt.hash("password123", 10);
   const user = await UserModel.create({ email, passwordHash });
 
+  const account = await AccountModel.create({
+    userId: user.id,
+    name: "Demo Checking",
+    type: "CHECKING",
+    currency: "USD"
+  });
+
   await IncomeStreamModel.insertMany([
     {
       userId: user.id,
@@ -96,7 +103,7 @@ const seed = async () => {
     }
   ]);
 
-  await DebtModel.insertMany([
+  const debts = await DebtModel.insertMany([
     {
       userId: user.id,
       name: "Credit Card",
@@ -125,6 +132,31 @@ const seed = async () => {
       dueDayOfMonth: 5
     }
   ]);
+
+  const categories = await CategoryModel.insertMany([
+    { userId: user.id, name: "Income", kind: "INCOME" },
+    { userId: user.id, name: "Groceries", kind: "EXPENSE" },
+    { userId: user.id, name: "Housing", kind: "EXPENSE" },
+    { userId: user.id, name: "Utilities", kind: "EXPENSE" },
+    { userId: user.id, name: "Transportation", kind: "EXPENSE" },
+    { userId: user.id, name: "Dining", kind: "EXPENSE" },
+    { userId: user.id, name: "Health", kind: "EXPENSE" },
+    { userId: user.id, name: "Entertainment", kind: "EXPENSE" }
+  ]);
+
+  const tags = await TagModel.insertMany([
+    { userId: user.id, name: "groceries" },
+    { userId: user.id, name: "rent" },
+    { userId: user.id, name: "fuel" },
+    { userId: user.id, name: "coffee" },
+    { userId: user.id, name: "subscription" },
+    { userId: user.id, name: "utilities" },
+    { userId: user.id, name: "travel" },
+    { userId: user.id, name: "bonus" }
+  ]);
+
+  const categoryByName = new Map(categories.map((cat) => [cat.name, cat]));
+  const tagByName = new Map(tags.map((tag) => [tag.name, tag]));
 
   await BillModel.insertMany([
     {
@@ -205,6 +237,152 @@ const seed = async () => {
     targetDollars: mandatorySummary.targetDollars,
     currentDollars: 0
   });
+
+  await BudgetModel.insertMany([
+    {
+      userId: user.id,
+      name: "Groceries",
+      amountDollars: 500,
+      period: "MONTHLY",
+      tagId: tagByName.get("groceries")?.id
+    },
+    {
+      userId: user.id,
+      name: "Dining Out",
+      amountDollars: 200,
+      period: "MONTHLY",
+      tagId: tagByName.get("coffee")?.id
+    },
+    {
+      userId: user.id,
+      name: "Transportation",
+      amountDollars: 250,
+      period: "MONTHLY",
+      categoryId: categoryByName.get("Transportation")?.id
+    }
+  ]);
+
+  const transactionSeed = [
+    {
+      date: daysAgo(2),
+      amountDollars: -86.45,
+      merchant: "Trader Joe's",
+      category: "Groceries",
+      tags: ["groceries"]
+    },
+    {
+      date: daysAgo(3),
+      amountDollars: -12.5,
+      merchant: "Blue Bottle",
+      category: "Dining",
+      tags: ["coffee"]
+    },
+    {
+      date: daysAgo(5),
+      amountDollars: -72.1,
+      merchant: "Shell",
+      category: "Transportation",
+      tags: ["fuel"]
+    },
+    {
+      date: daysAgo(6),
+      amountDollars: -1500,
+      merchant: "Rent",
+      category: "Housing",
+      tags: ["rent"]
+    },
+    {
+      date: daysAgo(7),
+      amountDollars: -58.99,
+      merchant: "Electric Co",
+      category: "Utilities",
+      tags: ["utilities"]
+    },
+    {
+      date: daysAgo(9),
+      amountDollars: -24.99,
+      merchant: "Netflix",
+      category: "Entertainment",
+      tags: ["subscription"]
+    },
+    {
+      date: daysAgo(11),
+      amountDollars: -38.25,
+      merchant: "CVS Pharmacy",
+      category: "Health",
+      tags: []
+    },
+    {
+      date: daysAgo(13),
+      amountDollars: -125.2,
+      merchant: "Target",
+      category: "Groceries",
+      tags: ["groceries"]
+    },
+    {
+      date: daysAgo(15),
+      amountDollars: -220.4,
+      merchant: "United Airlines",
+      category: "Transportation",
+      tags: ["travel"]
+    },
+    {
+      date: daysAgo(1),
+      amountDollars: 2200,
+      merchant: "Payroll",
+      category: "Income",
+      tags: []
+    },
+    {
+      date: daysAgo(4),
+      amountDollars: 350,
+      merchant: "Side Gig",
+      category: "Income",
+      tags: ["bonus"]
+    }
+  ];
+
+  const transactions = await TransactionModel.insertMany(
+    transactionSeed.map((tx) => ({
+      userId: user.id,
+      accountId: account.id,
+      date: tx.date,
+      amountDollars: tx.amountDollars,
+      amountCents: Math.round(tx.amountDollars * 100),
+      merchant: tx.merchant,
+      categoryId: categoryByName.get(tx.category)?.id
+    }))
+  );
+
+  const transactionTags: Array<{ transactionId: string; tagId: string }> = [];
+  transactions.forEach((transaction, index) => {
+    transactionSeed[index].tags.forEach((name) => {
+      const tag = tagByName.get(name);
+      if (!tag) return;
+      transactionTags.push({ transactionId: transaction.id, tagId: tag.id });
+    });
+  });
+
+  if (transactionTags.length > 0) {
+    await TransactionTagModel.insertMany(transactionTags);
+  }
+
+  await DebtPaymentModel.insertMany([
+    {
+      userId: user.id,
+      debtId: debts[0].id,
+      amountDollars: 180,
+      amountCents: 18000,
+      paymentDate: daysAgo(12)
+    },
+    {
+      userId: user.id,
+      debtId: debts[1].id,
+      amountDollars: 320,
+      amountCents: 32000,
+      paymentDate: daysAgo(20)
+    }
+  ]);
 
   console.log("Seeded demo user:", email);
 };

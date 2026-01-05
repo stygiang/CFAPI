@@ -1,7 +1,7 @@
 import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
-import { MandatorySavingsModel } from "../models";
+import { AccountModel, MandatorySavingsModel } from "../models";
 import {
   calculateMandatorySavingsTarget,
   mapMandatorySavings,
@@ -14,6 +14,7 @@ import { dateString, parseWithSchema } from "../utils/validation";
 const dateInputSchema = dateString;
 
 const mandatorySavingsSchema = z.object({
+  accountId: z.string().min(1),
   monthsToSave: z.number().int().min(1).max(36),
   currentDollars: z.number().nonnegative().optional()
 });
@@ -24,6 +25,7 @@ const contributionSchema = z.object({
 
 const mandatoryResponseSchema = z.object({
   id: z.string(),
+  accountId: z.string(),
   monthsToSave: z.number(),
   targetDollars: z.number(),
   currentDollars: z.number(),
@@ -59,6 +61,7 @@ export default async function mandatorySavingsRoutes(fastify: FastifyInstance) {
 
     return {
       id: mandatory.id,
+      accountId: mandatory.accountId?.toString() ?? "",
       monthsToSave: mandatory.monthsToSave,
       targetDollars,
       currentDollars: mapped.currentDollars,
@@ -106,6 +109,13 @@ export default async function mandatorySavingsRoutes(fastify: FastifyInstance) {
       }
 
       const userId = request.user.sub;
+      const account = await AccountModel.findOne({
+        _id: parsed.data.accountId,
+        userId
+      });
+      if (!account) {
+        return reply.code(404).send({ error: "Account not found" });
+      }
       const dateKey = toDateKey(new Date());
       const summary = await calculateMandatorySavingsTarget({
         userId,
@@ -117,6 +127,7 @@ export default async function mandatorySavingsRoutes(fastify: FastifyInstance) {
         { userId },
         {
           $set: {
+            accountId: account.id,
             monthsToSave: parsed.data.monthsToSave,
             targetDollars: summary.targetDollars,
             ...(parsed.data.currentDollars !== undefined

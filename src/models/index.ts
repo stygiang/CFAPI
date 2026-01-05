@@ -1,30 +1,5 @@
 import mongoose, { Schema } from "mongoose";
-
-const baseTransform = (_doc: unknown, ret: Record<string, unknown>) => {
-  if (ret._id) {
-    ret.id = ret._id.toString();
-    delete ret._id;
-  }
-  for (const [key, value] of Object.entries(ret)) {
-    if (value instanceof mongoose.Types.ObjectId) {
-      ret[key] = value.toString();
-      continue;
-    }
-    if (Array.isArray(value)) {
-      ret[key] = value.map((entry) =>
-        entry instanceof mongoose.Types.ObjectId ? entry.toString() : entry
-      );
-    }
-  }
-  delete ret.__v;
-  return ret;
-};
-
-const schemaOptions = (timestamps: boolean | { createdAt: boolean; updatedAt: boolean }) => ({
-  timestamps,
-  toJSON: { virtuals: true, transform: baseTransform },
-  toObject: { virtuals: true, transform: baseTransform }
-});
+import { schemaOptions } from "./schema";
 
 const AccountTypeValues = ["CHECKING", "SAVINGS", "CREDIT", "CASH"] as const;
 const CategoryKindValues = ["INCOME", "EXPENSE", "TRANSFER"] as const;
@@ -49,10 +24,33 @@ const PlanItemTypeValues = [
 const UserSchema = new Schema(
   {
     email: { type: String, required: true, unique: true },
-    passwordHash: { type: String, required: true }
+    passwordHash: { type: String, required: true },
+    paySchedule: {
+      frequency: {
+        type: String,
+        enum: ["weekly", "biweekly", "semimonthly", "monthly"]
+      },
+      nextPayDate: Date,
+      amountCents: Number
+    },
+    plannerLastRunAt: Date,
+    lastPatternRunAt: Date
   },
   schemaOptions({ createdAt: true, updatedAt: false })
 );
+
+const RefreshTokenSchema = new Schema(
+  {
+    userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    tokenHash: { type: String, required: true },
+    expiresAt: { type: Date, required: true },
+    revokedAt: Date
+  },
+  schemaOptions({ createdAt: true, updatedAt: false })
+);
+RefreshTokenSchema.index({ userId: 1 });
+RefreshTokenSchema.index({ tokenHash: 1 }, { unique: true });
+RefreshTokenSchema.index({ expiresAt: 1 });
 
 const AccountSchema = new Schema(
   {
@@ -60,11 +58,13 @@ const AccountSchema = new Schema(
     name: { type: String, required: true },
     type: { type: String, enum: AccountTypeValues, required: true },
     currency: { type: String, required: true },
-    plaidItemId: { type: Schema.Types.ObjectId, ref: "PlaidItem" },
-    plaidAccountId: { type: String, unique: true, sparse: true },
-    plaidMask: String,
-    plaidType: String,
-    plaidSubtype: String
+    balanceDollars: { type: Number, default: 0 },
+    balanceCents: { type: Number, default: 0 },
+    cardLast4: String,
+    cardExpMonth: Number,
+    cardExpYear: Number,
+    cardBrand: String,
+    cardholderName: String
   },
   schemaOptions({ createdAt: true, updatedAt: false })
 );
@@ -84,12 +84,17 @@ const TransactionSchema = new Schema(
   {
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     accountId: { type: Schema.Types.ObjectId, ref: "Account" },
+    billId: { type: Schema.Types.ObjectId, ref: "Bill" },
+    subscriptionId: { type: Schema.Types.ObjectId, ref: "Subscription" },
+    savingsGoalId: { type: Schema.Types.ObjectId, ref: "SavingsGoal" },
+    purchaseGoalId: { type: Schema.Types.ObjectId, ref: "PurchaseGoal" },
+    transferId: { type: Schema.Types.ObjectId, ref: "Transfer" },
     date: { type: Date, required: true },
     amountDollars: { type: Number, required: true },
+    amountCents: { type: Number },
     categoryId: { type: Schema.Types.ObjectId, ref: "Category" },
     merchant: String,
     note: String,
-    plaidTransactionId: { type: String, unique: true, sparse: true },
     pending: { type: Boolean, default: false },
     deletedAt: Date
   },
@@ -97,7 +102,9 @@ const TransactionSchema = new Schema(
 );
 TransactionSchema.index({ userId: 1 });
 TransactionSchema.index({ userId: 1, date: 1 });
+TransactionSchema.index({ userId: 1, date: -1, _id: -1 });
 TransactionSchema.index({ userId: 1, deletedAt: 1 });
+TransactionSchema.index({ userId: 1, date: -1, amountCents: -1 });
 TransactionSchema.virtual("transactionTags", {
   ref: "TransactionTag",
   localField: "_id",
@@ -159,6 +166,7 @@ const BudgetSchema = new Schema(
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     name: { type: String, required: true },
     amountDollars: { type: Number, required: true },
+    amountCents: { type: Number },
     period: { type: String, enum: BudgetPeriodValues, required: true },
     categoryId: { type: Schema.Types.ObjectId, ref: "Category" },
     tagId: { type: Schema.Types.ObjectId, ref: "Tag" }
@@ -174,8 +182,12 @@ const BillSchema = new Schema(
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     name: { type: String, required: true },
     amountDollars: { type: Number, required: true },
+    amountCents: { type: Number },
+    allocatedDollars: { type: Number, default: 0 },
+    allocatedCents: { type: Number, default: 0 },
     dueDayOfMonth: Number,
     dueDate: Date,
+    nextPayDate: Date,
     frequency: { type: String, enum: BillFrequencyValues, required: true },
     isEssential: { type: Boolean, default: true },
     autopay: { type: Boolean, default: false }
@@ -189,7 +201,12 @@ const SubscriptionSchema = new Schema(
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     name: { type: String, required: true },
     amountDollars: { type: Number, required: true },
+    amountCents: { type: Number },
+    allocatedDollars: { type: Number, default: 0 },
+    allocatedCents: { type: Number, default: 0 },
+    billingDate: Date,
     billingDayOfMonth: { type: Number, required: true },
+    nextPayDate: Date,
     frequency: { type: String, enum: SubscriptionFrequencyValues, required: true },
     cancelable: { type: Boolean, required: true }
   },
@@ -202,7 +219,9 @@ const IncomeStreamSchema = new Schema(
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     name: { type: String, required: true },
     amountDollars: { type: Number, required: true },
+    amountCents: { type: Number },
     lastAmountDollars: Number,
+    lastAmountCents: Number,
     cadence: { type: String, enum: IncomeCadenceValues, required: true },
     nextPayDate: { type: Date, required: true }
   },
@@ -220,9 +239,12 @@ const DebtSchema = new Schema(
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     name: { type: String, required: true },
     principalDollars: { type: Number, required: true },
+    principalCents: { type: Number },
     aprBps: { type: Number, required: true },
     minPaymentDollars: { type: Number, required: true },
+    minPaymentCents: { type: Number },
     estimatedMonthlyPaymentDollars: Number,
+    estimatedMonthlyPaymentCents: Number,
     dueDayOfMonth: { type: Number, required: true },
     estimatedPayoffDate: Date
   },
@@ -238,11 +260,15 @@ DebtSchema.virtual("debtTags", {
 const SavingsGoalSchema = new Schema(
   {
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    accountId: { type: Schema.Types.ObjectId, ref: "Account", required: true },
     name: { type: String, required: true },
     targetDollars: { type: Number, required: true },
+    targetCents: { type: Number },
     currentDollars: { type: Number, required: true },
+    currentCents: { type: Number },
     ruleType: { type: String, enum: SavingsRuleTypeValues, required: true },
     ruleValueBpsOrDollars: { type: Number, required: true },
+    ruleValueCents: { type: Number },
     priority: { type: Number, default: 1 }
   },
   schemaOptions({ createdAt: true, updatedAt: false })
@@ -252,9 +278,12 @@ SavingsGoalSchema.index({ userId: 1 });
 const MandatorySavingsSchema = new Schema(
   {
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true, unique: true },
+    accountId: { type: Schema.Types.ObjectId, ref: "Account", required: true },
     monthsToSave: { type: Number, required: true },
     targetDollars: { type: Number, required: true },
-    currentDollars: { type: Number, required: true }
+    targetCents: { type: Number },
+    currentDollars: { type: Number, required: true },
+    currentCents: { type: Number }
   },
   schemaOptions(true)
 );
@@ -296,6 +325,7 @@ const PlanItemSchema = new Schema(
     type: { type: String, enum: PlanItemTypeValues, required: true },
     entityId: String,
     amountDollars: { type: Number, required: true },
+    amountCents: { type: Number },
     notes: String,
     balanceSnapshotJson: Schema.Types.Mixed
   },
@@ -308,6 +338,7 @@ const DebtPaymentSchema = new Schema(
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
     debtId: { type: Schema.Types.ObjectId, ref: "Debt", required: true },
     amountDollars: { type: Number, required: true },
+    amountCents: { type: Number },
     paymentDate: { type: Date, required: true }
   },
   schemaOptions({ createdAt: true, updatedAt: false })
@@ -316,18 +347,23 @@ DebtPaymentSchema.index({ userId: 1 });
 DebtPaymentSchema.index({ debtId: 1 });
 DebtPaymentSchema.index({ debtId: 1, paymentDate: 1 });
 
-const PlaidItemSchema = new Schema(
+
+const TransferSchema = new Schema(
   {
     userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
-    itemId: { type: String, required: true, unique: true },
-    accessTokenEncrypted: { type: String, required: true },
-    institutionId: String,
-    institutionName: String,
-    transactionsCursor: String
+    fromAccountId: { type: Schema.Types.ObjectId, ref: "Account", required: true },
+    toAccountId: { type: Schema.Types.ObjectId, ref: "Account", required: true },
+    amountDollars: { type: Number, required: true },
+    amountCents: { type: Number },
+    date: { type: Date, required: true },
+    note: String,
+    transferOutId: { type: Schema.Types.ObjectId, ref: "Transaction" },
+    transferInId: { type: Schema.Types.ObjectId, ref: "Transaction" }
   },
-  schemaOptions(true)
+  schemaOptions({ createdAt: true, updatedAt: false })
 );
-PlaidItemSchema.index({ userId: 1 });
+TransferSchema.index({ userId: 1 });
+TransferSchema.index({ userId: 1, date: -1 });
 
 const TagSchema = new Schema(
   {
@@ -384,6 +420,8 @@ DebtTagSchema.index({ debtId: 1 });
 DebtTagSchema.index({ tagId: 1 });
 
 export const UserModel = mongoose.models.User || mongoose.model("User", UserSchema);
+export const RefreshTokenModel =
+  mongoose.models.RefreshToken || mongoose.model("RefreshToken", RefreshTokenSchema);
 export const AccountModel = mongoose.models.Account || mongoose.model("Account", AccountSchema);
 export const CategoryModel = mongoose.models.Category || mongoose.model("Category", CategorySchema);
 export const TransactionModel =
@@ -413,8 +451,8 @@ export const PlanItemModel =
   mongoose.models.PlanItem || mongoose.model("PlanItem", PlanItemSchema);
 export const DebtPaymentModel =
   mongoose.models.DebtPayment || mongoose.model("DebtPayment", DebtPaymentSchema);
-export const PlaidItemModel =
-  mongoose.models.PlaidItem || mongoose.model("PlaidItem", PlaidItemSchema);
+export const TransferModel =
+  mongoose.models.Transfer || mongoose.model("Transfer", TransferSchema);
 export const TagModel = mongoose.models.Tag || mongoose.model("Tag", TagSchema);
 export const TagRuleTagModel =
   mongoose.models.TagRuleTag || mongoose.model("TagRuleTag", TagRuleTagSchema);
@@ -424,3 +462,8 @@ export const IncomeStreamTagModel =
   mongoose.models.IncomeStreamTag ||
   mongoose.model("IncomeStreamTag", IncomeStreamTagSchema);
 export const DebtTagModel = mongoose.models.DebtTag || mongoose.model("DebtTag", DebtTagSchema);
+export { PurchaseGoalModel } from "./PurchaseGoal";
+export { GoalFundingLedgerModel } from "./GoalFundingLedger";
+export { RollupMonthlyModel } from "./RollupMonthly";
+export { PurchasePatternModel } from "./PurchasePattern";
+export { PatternDecisionModel } from "./PatternDecision";

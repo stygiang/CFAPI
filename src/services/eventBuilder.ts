@@ -41,6 +41,7 @@ type SubscriptionLike = {
   name: string;
   amountDollars: number;
   billingDayOfMonth: number;
+  billingDate?: Date | null;
   frequency: "MONTHLY" | "YEARLY";
 };
 
@@ -265,7 +266,8 @@ export const buildSubscriptionEvents = (
   const events: ExpenseEvent[] = [];
 
   for (const sub of subs) {
-    const dayOfMonth = sub.billingDayOfMonth;
+    const dayOfMonth = sub.billingDayOfMonth ?? sub.billingDate?.getDate();
+    if (!dayOfMonth) continue;
     if (sub.frequency === "YEARLY") {
       const base = new Date(start.getFullYear(), start.getMonth(), dayOfMonth);
       const dates = buildYearlyDates(base, start, end);

@@ -2,6 +2,7 @@ import { PlanModel, UserModel } from "../models";
 import { PlanRequest, createPlan } from "./planService";
 import { toDateKey } from "../utils/dates";
 import { PlanRules, Strategy } from "../engine/types";
+import { parseCronHourMinute, scheduleNextCron } from "./cron";
 
 type AutoPlanReason = "transaction" | "debt" | "cron";
 
@@ -111,29 +112,35 @@ export const scheduleAutoPlanCheck = (userId: string, reason: AutoPlanReason) =>
   });
 };
 
-const parseCronHourMinute = (cron: string) => {
-  const parts = cron.trim().split(/\s+/);
-  if (parts.length < 2) return null;
-  const minute = Number(parts[0]);
-  const hour = Number(parts[1]);
-  if (!Number.isFinite(minute) || !Number.isFinite(hour)) return null;
-  if (minute < 0 || minute > 59 || hour < 0 || hour > 23) return null;
-  return { minute, hour };
-};
+export const runAutoPlanCronOnce = async () => {
+  const config = getAutoPlanConfig();
+  if (!config.enabled) return;
 
-const scheduleNextCron = (minute: number, hour: number) => {
-  const now = new Date();
-  const next = new Date();
-  next.setSeconds(0);
-  next.setMilliseconds(0);
-  next.setMinutes(minute);
-  next.setHours(hour);
+  const cutoff = new Date(Date.now() - config.maxAgeDays * 24 * 60 * 60 * 1000);
 
-  if (next <= now) {
-    next.setDate(next.getDate() + 1);
+  const latestPlans = await PlanModel.aggregate([
+    { $sort: { createdAt: -1 } },
+    { $group: { _id: "$userId", latestCreatedAt: { $first: "$createdAt" } } },
+    { $match: { latestCreatedAt: { $lt: cutoff } } }
+  ]);
+
+  const userIds = latestPlans.map((entry) => entry._id?.toString()).filter(Boolean);
+
+  if (userIds.length > 0) {
+    for (const userId of userIds) {
+      scheduleAutoPlanCheck(userId, "cron");
+    }
   }
 
-  return next.getTime() - now.getTime();
+  const usersWithPlans = await PlanModel.distinct("userId");
+  const usersWithoutPlans = await UserModel.find(
+    { _id: { $nin: usersWithPlans } },
+    { _id: 1 }
+  );
+
+  for (const user of usersWithoutPlans) {
+    scheduleAutoPlanCheck(user.id, "cron");
+  }
 };
 
 export const startAutoPlanCron = () => {
@@ -148,10 +155,7 @@ export const startAutoPlanCron = () => {
     const delay = scheduleNextCron(parsed.minute, parsed.hour);
     setTimeout(async () => {
       try {
-        const users = await UserModel.find({}, { _id: 1 });
-        for (const user of users) {
-          scheduleAutoPlanCheck(user.id, "cron");
-        }
+        await runAutoPlanCronOnce();
       } finally {
         schedule();
       }

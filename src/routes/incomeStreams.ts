@@ -5,6 +5,7 @@ import { IncomeStreamModel } from "../models";
 import { replaceIncomeStreamTags, normalizeTags } from "../services/tagService";
 import { decimalToNumber } from "../utils/decimal";
 import { parseDateFlexible, toDateOnly } from "../utils/dates";
+import { fromCents, toCents } from "../utils/money";
 import { dateString, parseWithSchema } from "../utils/validation";
 
 const incomeStreamBaseSchema = z.object({
@@ -55,9 +56,16 @@ export default async function incomeStreamsRoutes(fastify: FastifyInstance) {
   const mapIncome = (income: any) => {
     const data = income?.toJSON ? income.toJSON() : income;
     const { incomeStreamTags, ...rest } = data;
-    const amountDollars = decimalToNumber(data.amountDollars);
+    const amountDollars =
+      data.amountCents != null
+        ? fromCents(data.amountCents)
+        : decimalToNumber(data.amountDollars);
     const lastAmountDollars =
-      data.lastAmountDollars != null ? decimalToNumber(data.lastAmountDollars) : null;
+      data.lastAmountCents != null
+        ? fromCents(data.lastAmountCents)
+        : data.lastAmountDollars != null
+        ? decimalToNumber(data.lastAmountDollars)
+        : null;
 
     return {
       ...rest,
@@ -107,6 +115,7 @@ export default async function incomeStreamsRoutes(fastify: FastifyInstance) {
       const created = await IncomeStreamModel.create({
         name: parsed.data.name,
         amountDollars: parsed.data.amountDollars,
+        amountCents: toCents(parsed.data.amountDollars),
         cadence: parsed.data.cadence,
         nextPayDate: parseDateFlexible(parsed.data.nextPayDate),
         userId
@@ -146,7 +155,9 @@ export default async function incomeStreamsRoutes(fastify: FastifyInstance) {
       const updateData: {
         name?: string;
         amountDollars?: number;
+        amountCents?: number;
         lastAmountDollars?: number | null;
+        lastAmountCents?: number | null;
         cadence?: "WEEKLY" | "BIWEEKLY" | "MONTHLY";
         nextPayDate?: Date;
       } = {};
@@ -161,10 +172,15 @@ export default async function incomeStreamsRoutes(fastify: FastifyInstance) {
         updateData.nextPayDate = parseDateFlexible(parsed.data.nextPayDate);
       }
       if (parsed.data.amountDollars !== undefined) {
-        const currentAmount = decimalToNumber(existing.amountDollars);
+        const currentAmount =
+          existing.amountCents != null
+            ? fromCents(existing.amountCents)
+            : decimalToNumber(existing.amountDollars);
         updateData.amountDollars = parsed.data.amountDollars;
+        updateData.amountCents = toCents(parsed.data.amountDollars);
         if (Math.abs(parsed.data.amountDollars - currentAmount) > 0.0001) {
           updateData.lastAmountDollars = currentAmount;
+          updateData.lastAmountCents = toCents(currentAmount);
         }
       }
 

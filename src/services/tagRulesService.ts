@@ -1,5 +1,6 @@
 import { TagRuleModel } from "../models";
 import { normalizeTags, replaceTagRuleTags } from "./tagService";
+import { safeRegexTest } from "../utils/regex";
 
 export type TagRuleMatchType = "CONTAINS" | "REGEX";
 export type TagRuleSourceField = "MERCHANT" | "NOTE";
@@ -73,12 +74,7 @@ export const matchRuleTags = (
       if (rule.matchType === "CONTAINS") {
         matches = haystack.includes(needle);
       } else {
-        try {
-          const regex = new RegExp(rule.pattern, "i");
-          matches = regex.test(source);
-        } catch {
-          matches = false;
-        }
+        matches = safeRegexTest(rule.pattern, source);
       }
       if (matches) break;
     }

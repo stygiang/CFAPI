@@ -1,4 +1,5 @@
 import { CategoryRuleModel } from "../models";
+import { safeRegexTest } from "../utils/regex";
 
 export type CategoryRuleMatchType = "CONTAINS" | "REGEX";
 export type CategoryRuleSourceField = "MERCHANT" | "NOTE";
@@ -61,12 +62,7 @@ export const matchRuleCategory = (
       if (rule.matchType === "CONTAINS") {
         matches = haystack.includes(needle);
       } else {
-        try {
-          const regex = new RegExp(rule.pattern, "i");
-          matches = regex.test(source);
-        } catch {
-          matches = false;
-        }
+        matches = safeRegexTest(rule.pattern, source);
       }
       if (matches) break;
     }

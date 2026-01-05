@@ -3,6 +3,7 @@ import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { buildRecurringInsights, buildUpcomingLedger } from "../services/recurringInsightsService";
 import { dateString, parseWithSchema } from "../utils/validation";
+import { buildCacheKey, getCachedJson, setCachedJson } from "../services/cache";
 
 const recurringQuerySchema = z.object({
   monthsBack: z.coerce.number().int().min(1).max(24).optional()
@@ -30,10 +31,18 @@ export default async function insightsRoutes(fastify: FastifyInstance) {
       }
 
       const userId = request.user.sub;
-      return buildRecurringInsights({
+      const monthsBack = parsed.data.monthsBack ?? 6;
+      const cacheKey = buildCacheKey(["insights-recurring", userId, monthsBack]);
+      const cached = await getCachedJson<unknown>(cacheKey);
+      if (cached) {
+        return cached;
+      }
+      const response = await buildRecurringInsights({
         userId,
-        monthsBack: parsed.data.monthsBack ?? 6
+        monthsBack
       });
+      await setCachedJson(cacheKey, response);
+      return response;
     }
   );
 

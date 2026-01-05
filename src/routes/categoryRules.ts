@@ -4,6 +4,7 @@ import { zodToJsonSchema } from "zod-to-json-schema";
 import { CategoryRuleModel, CategoryModel } from "../models";
 import { getCategoryRulesForUser, upsertCategoryRule } from "../services/categoryRulesService";
 import { parseWithSchema } from "../utils/validation";
+import { isSafeRegex } from "../utils/regex";
 
 const ruleBaseSchema = z.object({
   name: z.string().min(1),
@@ -56,10 +57,8 @@ export default async function categoryRulesRoutes(fastify: FastifyInstance) {
       }
 
       if (parsed.data.matchType === "REGEX") {
-        try {
-          new RegExp(parsed.data.pattern);
-        } catch {
-          return reply.code(400).send({ error: "Invalid regex pattern" });
+        if (!isSafeRegex(parsed.data.pattern)) {
+          return reply.code(400).send({ error: "Invalid or unsafe regex pattern" });
         }
       }
 
@@ -109,10 +108,8 @@ export default async function categoryRulesRoutes(fastify: FastifyInstance) {
       const matchType = parsed.data.matchType ?? existing.matchType;
       const pattern = parsed.data.pattern ?? existing.pattern;
       if (matchType === "REGEX") {
-        try {
-          new RegExp(pattern);
-        } catch {
-          return reply.code(400).send({ error: "Invalid regex pattern" });
+        if (!isSafeRegex(pattern)) {
+          return reply.code(400).send({ error: "Invalid or unsafe regex pattern" });
         }
       }
 

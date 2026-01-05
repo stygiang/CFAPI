@@ -5,6 +5,7 @@ import { TagRuleModel } from "../models";
 import { normalizeTags, replaceTagRuleTags } from "../services/tagService";
 import { getTagRulesForUser, upsertTagRule } from "../services/tagRulesService";
 import { parseWithSchema } from "../utils/validation";
+import { isSafeRegex } from "../utils/regex";
 
 const ruleBaseSchema = z.object({
   name: z.string().min(1),
@@ -57,10 +58,8 @@ export default async function tagRulesRoutes(fastify: FastifyInstance) {
       }
 
       if (parsed.data.matchType === "REGEX") {
-        try {
-          new RegExp(parsed.data.pattern);
-        } catch {
-          return reply.code(400).send({ error: "Invalid regex pattern" });
+        if (!isSafeRegex(parsed.data.pattern)) {
+          return reply.code(400).send({ error: "Invalid or unsafe regex pattern" });
         }
       }
 
@@ -104,10 +103,8 @@ export default async function tagRulesRoutes(fastify: FastifyInstance) {
       const matchType = parsed.data.matchType ?? existing.matchType;
       const pattern = parsed.data.pattern ?? existing.pattern;
       if (matchType === "REGEX") {
-        try {
-          new RegExp(pattern);
-        } catch {
-          return reply.code(400).send({ error: "Invalid regex pattern" });
+        if (!isSafeRegex(pattern)) {
+          return reply.code(400).send({ error: "Invalid or unsafe regex pattern" });
         }
       }
 
